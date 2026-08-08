@@ -5,8 +5,24 @@ the source of truth, and do not invent APIs, SDKs, endpoints, contracts, or
 terminology. **This session still could not inspect the official docs
 content** — `https://docs.cleanverse.com/` was located via web search but
 direct fetch is blocked by this sandbox's network egress policy
-(`EGRESS_BLOCKED: docs.cleanverse.com`). `services/cleanverse/` remains
-empty stubs; nothing below has been verified against primary source text.
+(`EGRESS_BLOCKED: docs.cleanverse.com`), confirmed again in Build 01.6
+(retry, and a raw `curl` through the sandbox proxy — both blocked the same
+way) even with an access code supplied for the docs site itself, since the
+block happens at the network layer before any request reaches the site.
+`services/cleanverse/` remains stubs; nothing here has been verified
+against primary source text.
+
+**Build 02 update:** the task description for Build 02 relayed specific
+details (claimed to come from a "Cleanverse Compliance Protocol
+Integration Guide V2") — the `IAPassComplianceValidator.complianceVerify`
+signature and the `RuleV2` field names/semantics. Those were implemented
+on-chain (`contracts/src/interfaces/external/IAPassComplianceValidator.sol`,
+`contracts/src/compliance/BitVComplianceGuard.sol`) since they're
+concrete and directly actionable, but they are **relayed, not
+independently fetched** — see `docs/cleanverse-integration.md` for the
+full spec and exactly what's still unconfirmed within even that material
+(field types, rule-management functions, deployed address, CVA mechanics,
+off-chain API/SDK, auth, errors, webhooks).
 
 ## What a web search surfaced (UNVERIFIED — do not implement against this)
 
@@ -67,6 +83,7 @@ project's core instruction not to invent or blur Cleanverse's own
 terminology.
 
 `services/cleanverse/types.ts` and `services/cleanverse/client.ts` stay
-empty stubs (`Record<string, never>` placeholder types, throwing client
-methods) until this checklist is resolved with citations to the actual
-fetched documentation, not search summaries.
+non-functional (identity/asset placeholder types, a `RuleV2` TS mirror of
+the on-chain struct, and throwing client methods) until this checklist is
+resolved with citations to the actual fetched documentation, not search
+summaries or task-relayed descriptions.

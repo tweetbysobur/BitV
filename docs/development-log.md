@@ -4,6 +4,121 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 2 — Cleanverse compliance foundation (BUILD 02)
+
+**Date:** 2026-08-08
+
+**Context:** Build 01.6 (Cleanverse documentation audit) could not proceed
+— `docs.cleanverse.com` is hard-blocked by this sandbox's network egress
+policy, confirmed on retry and via raw `curl`, even with the access code
+provided (the block is at the network layer, before the docs site's own
+auth would even apply). The user then supplied Build 02, which relays
+specific interface details attributed to a "Cleanverse Compliance
+Protocol Integration Guide V2" directly in the task text rather than as a
+fetched document. Those relayed details (not independently verified
+against a primary source) were implemented; everything not given was left
+as `UNCONFIRMED` rather than guessed. Full sourcing caveat and spec in
+`docs/cleanverse-integration.md`.
+
+**Contracts created** (new `contracts/` Foundry workspace on this branch
+— it didn't exist after the Build 01 clean-slate rebuild):
+
+- `contracts/src/interfaces/external/IAPassComplianceValidator.sol` —
+  `complianceVerify(address poolAddress, address userAddress) view returns (bool)`
+  and the `RuleV2` struct (`allowedGroup`, `allowedSubGroup`, `minTier`,
+  `minSubTier`, `poolCountryBitmap`). Field Solidity types are an
+  engineering assumption (`uint256`), flagged in the file header.
+- `contracts/src/libraries/ComplianceErrors.sol` — `ComplianceCheckFailed`,
+  `ZeroValidatorAddress`, `NotImplemented`.
+- `contracts/src/compliance/BitVComplianceGuard.sol` — abstract base:
+  holds an `immutable` validator reference (no setter, rejects
+  `address(0)`), exposes `_requireCompliance(user)`.
+- `contracts/src/core/BitVAccessManager.sol` — OpenZeppelin
+  `AccessControl`-based protocol admin roles (distinct from Cleanverse
+  compliance).
+- `contracts/src/core/BitVPoolManager.sol` — `addLiquidity`,
+  `removeLiquidity`, `swap`: compliance-checked, then `NotImplemented`.
+- `contracts/src/core/BitVLendingManager.sol` — `supply`, `borrow`,
+  `repay`, `withdraw`, `liquidate`, `depositCollateral`,
+  `withdrawCollateral` (RWA hooks folded into lending, no separate RWA
+  contract — none was in the six-contract list): same pattern.
+- `contracts/src/core/BitVVaultManager.sol` — `deposit`, `withdraw`,
+  `claimRewards`: same pattern.
+- `contracts/src/core/BitScoreManager.sol` — skeleton only, explicitly
+  not gated by Cleanverse (BitScore is BitV-native, not a Cleanverse
+  primitive) and not calculated yet.
+- `contracts/src/core/BitVTreasury.sol` — `AccessControl`-gated skeleton,
+  not compliance-gated (internal protocol contract, not in the
+  pool/lending/vault/RWA hook list).
+- `contracts/test/mocks/MockComplianceValidator.sol` — test-only, clearly
+  labeled not-for-production `IAPassComplianceValidator` implementation.
+- `contracts/test/unit/BitVComplianceGuard.t.sol` — the 9 required
+  scenarios (verified pass, unverified reject, wrong group, wrong tier,
+  country restriction, AND-within-rule, OR-across-rules, no-bypass,
+  immutable/non-zero validator), plus one supporting test.
+- `contracts/lib/openzeppelin-contracts` (pinned `v5.0.2`) and
+  `contracts/lib/forge-std` added as git submodules; `foundry.toml` +
+  `remappings.txt` added.
+
+**Build/test result:** Foundry (`forge`) is not installed in this sandbox
+and its installer host (`foundry.paradigm.xyz`) is network-blocked here —
+same limitation as Build 01. As a substitute, every contract, the mock,
+and the test file were compiled with `solc@0.8.24` directly (manual
+import resolution against the submodule paths): **compiles clean**, only
+expected `state mutability can be restricted to view` warnings on the
+stub functions (correct — they'll need to be non-`view` once real state
+changes are implemented). **Test execution was not run** — solc only
+checks compilation, not `forge test`'s VM cheatcodes (`vm.prank`,
+`vm.expectRevert`, etc.) used in the test file. Run
+`forge test --match-contract BitVComplianceGuardTest -vvv` in an
+environment with Foundry installed to get an actual pass/fail result.
+
+**Frontend changes:**
+
+- `services/cleanverse/types.ts` — added `RuleV2` (TS mirror of the
+  on-chain struct, same type-assumption caveat) and `ComplianceStatus`
+  (BitV's own UI status union: `loading | verification-required |
+  eligible | ineligible | error`, explicitly not a Cleanverse type).
+- `services/cleanverse/client.ts` — added `checkCompliance` as a
+  still-throwing stub (no on-chain call wired up yet).
+- `components/compliance/ComplianceStatusBadge.tsx` — presentational
+  only; renders whatever `ComplianceStatus` it's given, produces none of
+  its own data.
+- `config/cleanverse.ts` — new config boundary: validator address (from
+  `NEXT_PUBLIC_CLEANVERSE_VALIDATOR_ADDRESS`, left empty — no guessed
+  address), network, and private API config references.
+- `app/globals.css` / `tailwind.config.ts` — added a `destructive` color
+  token (light/dark) since the compliance status states needed an
+  error/ineligible color that didn't exist yet.
+- `.env.example` — added `NEXT_PUBLIC_CLEANVERSE_VALIDATOR_ADDRESS`
+  (public — it's a contract address, not a secret) under Blockchain
+  configuration, left empty.
+
+**Frontend verification:** `npm run build`, `npm run lint`,
+`npm run typecheck` all re-run after these changes — all still **PASS**,
+no regressions from Build 01.5.
+
+**Documentation:** `docs/cleanverse-integration.md` created (full spec,
+sourcing caveats, and the Single-Contract-Mode-vs-Factory-Mode
+rationale). `docs/cleanverse-integration-todo.md` updated with the Build
+02 status rather than replaced (prior egress-block findings still hold).
+
+**Remaining before real deployment:** `RuleV2` field types, any
+rule-management functions on the real validator, the validator's deployed
+address on Monad Testnet, CVA's actual mechanics, and the entire
+off-chain API/SDK/auth/webhook surface — all `UNCONFIRMED`, none guessed.
+
+**Next recommended milestone:** Resolve the `UNCONFIRMED` list above via
+real documentation access (pasted content is the only channel that's
+worked so far), then (a) confirm/adjust `RuleV2` field types and any
+missing validator functions, (b) get Foundry running somewhere to
+actually execute `contracts/test/unit/BitVComplianceGuard.t.sol`, and (c)
+only then move to economic logic (pool accounting, lending interest,
+vault strategies) — still explicitly out of scope until compliance is
+confirmed correct end-to-end.
+
+---
+
 ## Milestone 1 — Foundation verification & stabilization (BUILD 01.5)
 
 **Date:** 2026-08-08
