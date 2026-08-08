@@ -4,6 +4,66 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 2.6 — Cleanverse deployment readiness audit (Build 02.6)
+
+**Date:** 2026-08-08
+
+**Context:** Final pre-deployment audit, opened alongside PR #2 (which
+bundles Build 01's foundation rebuild and Build 02.x's compliance
+architecture into one PR against `main`). No new source material this
+milestone — a targeted re-search of the same two PDFs (CVI Integration
+Guide V2, CVA Integration Guide) for Monad-specific and deployment-
+specific terms, per this milestone's explicit instruction not to infer
+addresses from unrelated sources.
+
+**Search performed:** the strings `Monad`, `Monad Testnet`, `validator
+address`, `IAPassComplianceValidator deployment`, `CVA deployment`, `CVA
+address`, and `chain ID` were searched for across both PDFs.
+
+**Result: no matches for "Monad" in either document.** No chain ID, no
+validator address, no CVA address appears anywhere in either document,
+for any network. This is a negative result, not a gap in the search —
+both documents were read in full in Build 02.1 and are short enough
+(11–14 pages each) that this is a complete search, not a sampling.
+
+**Validator registration re-confirmed exactly as Build 02.5 left it:**
+`POST /api/cooperate/validator/register`, signature rule
+`keccak256(chain + contract_address)` (lowercase hex concatenation) —
+and nothing else. No headers, request field names, response shape, or
+error handling are specified. No claim of EIP-191/`personal_sign` was
+reintroduced for this endpoint (that error was corrected in Build 02.5
+and stays corrected).
+
+**CVI issuance/verification/status-lookup/expiration/revocation APIs:**
+confirmed absent from both documents — restated as explicitly
+`UNCONFIRMED`, not silently dropped from the todo list.
+
+**Documentation changes:** `docs/cleanverse-integration.md` gained a
+"Deployment Readiness" section (Confirmed / Unconfirmed / Required
+before deployment) directly answering this milestone's checklist.
+`docs/cleanverse-integration-todo.md` got a "Build 02.6 deployment-
+readiness re-search" addendum confirming the negative search result and
+adding one new explicit item: whether Cleanverse supports Monad Testnet
+*at all* is unconfirmed, not just the address on it.
+
+**No Solidity or TypeScript changes this milestone** — per instruction,
+the compliance interface is not modified unless documentation proves it
+wrong, and this audit found no such proof (it found more absence of
+information, not new information).
+
+**Foundry:** re-confirmed unavailable (`which forge` → exit 1; `curl` to
+`foundry.paradigm.xyz` → `403`). `forge test` still **NOT EXECUTED**.
+
+**Bottom line:** BitV's Cleanverse compliance *architecture* is verified
+against real primary documentation and internally consistent. BitV's
+Cleanverse *deployment* is blocked — the validator's address, and even
+confirmation that Monad Testnet is a supported network, must come from
+Cleanverse directly; neither exists in the documentation provided so far.
+Per instruction, economic contract implementation does not proceed until
+this is resolved.
+
+---
+
 ## Milestone 2.5 — Cleanverse interface verification audit (Build 02.5)
 
 **Date:** 2026-08-08

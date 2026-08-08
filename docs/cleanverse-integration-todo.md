@@ -51,6 +51,29 @@ registering a BitV contract with a real validator, (b) building any
 identity-status UI beyond static states, (c) BitV ever issuing its own
 CVA token.
 
+## Build 02.6 deployment-readiness re-search (no new findings)
+
+Build 02.6 re-searched both PDFs specifically for the strings "Monad",
+"Monad Testnet", "validator address", "IAPassComplianceValidator
+deployment", "CVA deployment", "CVA address", and "chain ID". **The
+string "Monad" does not appear in either document.** No chain ID, no
+validator address, no CVA address appears anywhere in either document,
+for any network. This doesn't change items 1–9 above — it confirms none
+of them can be resolved from the two PDFs already in hand; #4 in
+particular ("validator's deployed address on Monad Testnet") is now
+explicitly widened to "no validator address is given for *any* network,"
+and a new item is added:
+
+10. **Whether Cleanverse supports Monad Testnet at all** — not just the
+    address, but the underlying fact of network support, is unconfirmed.
+    The CVA guide's network list ("Ethereum, Base, BSC, Arbitrum,
+    Polygon, etc.") omits Monad; the CVI guide gives no network list at
+    all. Get this confirmed by Cleanverse before assuming BitV can use
+    Cleanverse on Monad Testnet at all, let alone at a specific address.
+
+See `docs/cleanverse-integration.md`'s "Deployment Readiness" section for
+the full breakdown of what's required before deployment can proceed.
+
 ## Terminology (confirmed, not to be second-guessed)
 
 - **CVI** = Cleanverse Verified Identity (identity primitive)

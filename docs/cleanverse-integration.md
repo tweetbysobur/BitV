@@ -49,6 +49,102 @@ the source PDFs.
 | Validator's deployed address (any network) | Not given in either guide | `NEXT_PUBLIC_CLEANVERSE_VALIDATOR_ADDRESS` left empty | ❌ UNCONFIRMED |
 | Monad Testnet support | Not named in either guide (CVA guide lists "Ethereum, Base, BSC, Arbitrum, Polygon, etc." — Monad absent from that list, though the guides are chain-agnostic Solidity/API specs) | N/A | ❌ UNCONFIRMED |
 
+## Deployment Readiness
+
+Build 02.6 audit: re-searched both PDFs specifically for `Monad`,
+`Monad Testnet`, `validator address`, `IAPassComplianceValidator
+deployment`, `CVA deployment`, `CVA address`, and `chain ID`. No new
+source material was available this milestone (same two PDFs as Build
+02.1/02.5) — this is a targeted re-search of existing text, not new
+findings from a new document.
+
+**Search result: the string "Monad" does not appear anywhere in either
+PDF.** The CVI guide (validator) never lists supported networks at all.
+The CVA guide's only network statement is: "Supported networks: EVM
+(Ethereum, Base, BSC, Arbitrum, Polygon, etc.)" — Monad is not named; the
+trailing "etc." neither confirms nor rules it out. Neither guide contains
+a chain ID for any network, a validator contract address, or a CVA
+contract address (CVA tokens are per-issuer, freshly deployed via the
+Launch/Register flow — the guides describe *how to create one*, not a
+list of existing deployed addresses).
+
+### Confirmed
+
+- `IAPassComplianceValidator` interface (full function list, §3.2 of the
+  CVI guide) — implemented in `contracts/src/interfaces/external/`.
+- `RuleV2` struct fields/types and AND/OR/bitwise-AND semantics (§3.1).
+- `complianceVerify(address poolAddress, address userAddress) external view returns (bool)` (§3.2).
+- Single-Contract Mode is the correct pattern for BitV's MVP (§5); Factory
+  Mode is not required (§4, multi-pool-specific).
+- CVI validator and CVA are separate contracts/interfaces.
+- `POST /api/cooperate/validator/register` exists as an endpoint, and its
+  signature rule is `keccak256(chain + contract_address)`, lowercase hex
+  concatenation (§5.4) — **this is all §5.4 states**, nothing more.
+
+### Unconfirmed
+
+- **Explicit Monad Testnet support** — the string "Monad" is absent from
+  both PDFs.
+- **Monad Testnet chain ID (or any chain ID)** — not given anywhere.
+- **`IAPassComplianceValidator` deployment/validator address** — not
+  given for any network.
+- **CVA deployment addresses** — not applicable in the form asked (CVA
+  tokens are issued per-business via the Launch/Register flow, not
+  pre-deployed at fixed addresses), and no example/reference addresses
+  are given either.
+- **API authentication** beyond the two named-but-thin schemes already
+  documented (§4): CVA registration's `owner_signature` (EIP-191
+  `personal_sign`, confirmed for that endpoint only) and validator
+  registration's bare signature rule (see below).
+- **Validator registration signing mechanism** — confirmed only as
+  `keccak256(chain + contract_address)`, lowercase hex concatenation.
+  **Do not claim EIP-191 or `personal_sign` for this endpoint** — that
+  was an uncorroborated inference in an earlier draft of this document
+  (Build 02.5 already corrected this; restated here per this milestone's
+  explicit instruction not to let it silently reappear). The signing
+  algorithm that actually produces a signature *over* that keccak256
+  hash, the request field name carrying it, required headers, response
+  shape, and error handling are all **UNCONFIRMED** — §5.4 is one
+  paragraph long and doesn't cover any of that.
+- **CVI issuance API** — UNCONFIRMED, not documented.
+- **CVI verification/status-lookup API** — UNCONFIRMED. Only the
+  on-chain `complianceVerify(pool, user)` yes/no check is documented; no
+  API to ask "what is this wallet's CVI group/tier" independent of a
+  specific pool's rules exists in either guide.
+- **CVI expiration/revocation** — UNCONFIRMED, not documented.
+- **Other named-but-unlocated APIs**: Query Apply Status API, Query
+  Supported CVA List, Add CVA Rule API — referenced by name only in the
+  CVA guide, no path/method/schema given.
+- **`forge test` execution** — Foundry is not installed in this sandbox
+  and its installer host is network-blocked (re-confirmed this
+  milestone: `which forge` → exit 1, `curl` to `foundry.paradigm.xyz` →
+  `403`). Contracts are re-verified to compile via `solc` only; this is
+  not a substitute for a `forge test` pass/fail result.
+
+### Required before deployment
+
+1. **From Cleanverse directly** (not derivable from either PDF): explicit
+   confirmation that Monad Testnet is a supported network, its chain ID
+   as Cleanverse expects it, and the deployed `IAPassComplianceValidator`
+   address on that network. Nothing else in this milestone's scope can
+   substitute for this — BitV cannot register a contract or get a
+   meaningful `complianceVerify` answer without it.
+2. **From Cleanverse directly**: the actual validator-registration
+   signing mechanism (full algorithm, not just the hash rule) — needed
+   before any registration API client can be written correctly.
+3. **From Cleanverse directly**: a CVI issuance/verification flow
+   description, if BitV wants to build any UI beyond the four static
+   `ComplianceStatus` states that already exist.
+4. **Environment**: a Foundry-capable environment to actually run
+   `contracts/test/unit/BitVComplianceGuard.t.sol` and get a real
+   pass/fail result before this compliance layer is trusted.
+
+Per this milestone's own instruction: **since the validator address and
+explicit Monad deployment information remain unavailable, BitV should not
+proceed to economic contract implementation.** The compliance
+*architecture* is verified against real documentation and internally
+consistent; the compliance *deployment* is not yet possible.
+
 ## 1. Cleanverse architecture
 
 Two related but distinct systems, both keyed on the shared `RuleV2`
