@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BaseVaultTest} from "../BaseVaultTest.sol";
 import {BitVYieldVault} from "../../src/core/BitVYieldVault.sol";
 import {TestYieldStrategy} from "../../src/vault/TestYieldStrategy.sol";
@@ -12,6 +13,26 @@ import {MockReentrantVaultERC20} from "../mocks/MockReentrantVaultERC20.sol";
 import {BitVTreasury} from "../../src/core/BitVTreasury.sol";
 
 contract BitVYieldVaultTest is BaseVaultTest {
+    // ══════════════════════ CONSTRUCTOR SAFETY (Build 10) ═══════════════
+
+    /// @notice Regression test for Build 10 Phase 1: a zero-address
+    /// underlying asset must revert the deployment, not silently create
+    /// an unusable vault.
+    function test_Constructor_ZeroAsset_Reverts() public {
+        vm.expectRevert(VaultErrors.ZeroAddress.selector);
+        new BitVYieldVault(
+            IERC20(address(0)),
+            "BitV Yield Vault Share",
+            "bvyVLT",
+            address(validator),
+            complianceOwner,
+            address(accessManager),
+            address(treasury),
+            0,
+            0
+        );
+    }
+
     // ══════════════════════════ ACCESS ══════════════════════════════
 
     function test_VerifiedUser_CanDeposit() public {

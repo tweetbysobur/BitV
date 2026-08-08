@@ -144,6 +144,7 @@ contract BitVYieldVault is ERC4626, BitVComplianceGuard, BitVRoleConsumer, Reent
         BitVRoleConsumer(accessManager)
     {
         if (treasury_ == address(0)) revert VaultErrors.ZeroAddress();
+        if (address(asset_) == address(0)) revert VaultErrors.ZeroAddress();
         TREASURY = treasury_;
         vaultCap = vaultCap_;
         minDeposit = minDeposit_;

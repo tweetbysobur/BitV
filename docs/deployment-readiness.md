@@ -1,4 +1,4 @@
-# BitV Deployment Readiness Audit (Build 09)
+# BitV Deployment Readiness Audit (Build 09, updated by Build 10)
 
 Audit only — nothing was deployed, no transaction was broadcast, no
 economics or Cleanverse functionality were changed. See
@@ -6,6 +6,19 @@ economics or Cleanverse functionality were changed. See
 after deployment, and `contracts/script/Deploy.s.sol` /
 `contracts/script/ValidateDeployment.s.sol` for the (unrun) deployment
 and validation scripts this audit prepared.
+
+> **Build 10 update:** the two safety gaps flagged below (§14, "flagged,
+> not fixed") — `BitVAccessManager`'s missing zero-address guard and
+> `BitVYieldVault.asset_`'s missing zero-address guard — are now FIXED,
+> with regression tests. See `docs/deployment-preparation.md` for the
+> full Build 10 summary, `docs/admin-key-strategy.md`,
+> `docs/oracle-deployment-plan.md`, `docs/testnet-assets.md`, and
+> `docs/cleanverse-dependency-lock.md` for the deeper treatment of topics
+> this document's Phase 4/6/7/8 originally covered at audit depth only.
+> The external blockers below (Cleanverse validator address/Monad
+> support, production oracle, real testnet assets) remain unresolved —
+> Build 10 could not resolve them, since they require Cleanverse or
+> external infrastructure BitV does not control.
 
 ## 1. Contract inventory
 

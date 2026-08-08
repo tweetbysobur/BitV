@@ -78,6 +78,31 @@ contract ValidateDeployment is Script {
         // ── BitScore scale sanity (this milestone's 0-100 rescale) ────
         require(bitScoreManager.MAX_SCORE() == 100, "BitScoreManager.MAX_SCORE is not 100 (legacy scale?)");
 
+        // ── Compliance (CVI) configuration (Build 10 Phase 10) ────────
+        // Every BitVComplianceGuard-inheriting contract must be wired to
+        // the SAME Cleanverse validator — a mismatch here would mean
+        // compliance is being checked against two different sources of
+        // truth for the same protocol, which must never happen silently.
+        address expectedValidator = vm.envAddress("CLEANVERSE_VALIDATOR_ADDRESS");
+        _requireNonZeroWithCode(expectedValidator, "Cleanverse CVI validator");
+        require(
+            address(poolManager.COMPLIANCE_VALIDATOR()) == expectedValidator,
+            "PoolManager.COMPLIANCE_VALIDATOR mismatch"
+        );
+        require(
+            address(lendingManager.COMPLIANCE_VALIDATOR()) == expectedValidator,
+            "LendingManager.COMPLIANCE_VALIDATOR mismatch"
+        );
+
+        // ── Pool / lending / vault / RWA per-asset configuration ───────
+        // Deliberately NOT checked here: no pool, RWA asset, or vault
+        // exists immediately after core deployment (pool creation, RWA
+        // registration, and vault deployment are separate, asset-specific
+        // governance actions — see docs/deployment-readiness.md's
+        // "Post-deployment configuration" section). A per-asset
+        // validation pass belongs in a separate script run once specific
+        // assets are configured, not fabricated here against nothing.
+
         console2.log("Validation passed.");
     }
 

@@ -4,6 +4,76 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 10 — Testnet deployment preparation (Build 10)
+
+**Date:** 2026-08-08
+
+**Context:** Direct follow-up to Build 09's audit — resolves every
+deployment blocker BitV can control on its own, while explicitly leaving
+Cleanverse/external-infrastructure blockers unresolved (they require
+Cleanverse or a third party, not BitV code). No broadcast, no deployment,
+no real private key, no invented address of any kind.
+
+**Solidity changes (minimal, targeted):** `BitVAccessManager`'s
+constructor now reverts on `admin == address(0)` (previously would have
+permanently bricked administration of the whole protocol — every role
+would have been granted to an address nothing can ever call from);
+`BitVYieldVault`'s constructor now reverts on `asset_ == address(0)`.
+Both were flagged, not fixed, in Build 09; both are fixed here with
+regression tests (`test_Constructor_ZeroAdmin_Reverts`,
+`test_Constructor_ZeroAsset_Reverts`). No other `contracts/src/**` file
+changed — no economics, no new features.
+
+**New documentation:** `docs/admin-key-strategy.md` (full role/ownership
+inventory, TESTNET vs. PRODUCTION admin model — no multisig implemented
+or required), `docs/oracle-deployment-plan.md` (exact per-consumer oracle
+data requirements, TESTNET vs. PRODUCTION oracle — no production oracle
+selected, remains a hard blocker for real value), `docs/testnet-assets.md`
+(no real asset address confirmed anywhere — recorded as an explicit
+blocker with two documented, unexecuted paths forward),
+`docs/cleanverse-dependency-lock.md` (consolidated CVI/CVA
+requirement/status/source/next-action table — no new Cleanverse fact,
+`BitVCVAAdapter` unchanged), `docs/deployment-addresses-template.md`
+(empty operator-facing address record), `docs/deployment-preparation.md`
+(this milestone's index), `contracts/.env.example` (new — deployment-time
+variables, separate from the frontend's root `.env.example`).
+
+**Deployment/validation scripts:** `contracts/script/Deploy.s.sol`
+unchanged from Build 09 (already fails loudly on a missing Cleanverse
+validator address; reviewed, not modified).
+`contracts/script/ValidateDeployment.s.sol` extended with a compliance-
+configuration check (every `BitVComplianceGuard`-inheriting contract must
+reference the *same* Cleanverse validator address) — the one gap Build
+09's version had against this milestone's Phase 10 checklist. Per-asset
+(pool/vault/RWA) configuration checks remain deliberately unimplemented,
+since no asset exists immediately after core deployment to validate
+against; fabricating such a check would be checking against nothing.
+
+**Dry-run (Anvil, chain ID 31337, never touched Monad):** deployed a
+local-only `MockComplianceValidator` standing in for Cleanverse
+(explicitly local-test-only, not a claim about Cleanverse's real
+address), ran the full `Deploy.s.sol` sequence end to end
+(`BitVAccessManager` → `BitVTreasury`/`BitScoreManager` →
+`BitVPoolManager` → `BitVLendingManager`/`BitVRWACollateralRegistry` →
+`BitVCVAAdapter`, with all post-deployment wiring), then ran
+`ValidateDeployment.s.sol` against the result — both scripts completed
+successfully, confirming the deployment order, constructor arguments,
+role assignments, and cross-contract wiring all work mechanically as
+designed. No Monad Testnet or mainnet interaction occurred.
+
+**Verification:** `forge build` clean; `forge test` reconfirmed 218/218
+plus 2 new regression tests (220/220) — see final report for the live
+run; 41/41 Vitest; `npm run lint` clean; `npm run build` succeeds (same
+two pre-existing, unrelated optional-dependency warnings as Build 08/09).
+
+**Unresolved, and cannot be resolved by BitV alone:** Cleanverse CVI
+validator address, Cleanverse's Monad Testnet support confirmation,
+production oracle selection, real confirmed testnet asset addresses,
+WalletConnect project ID (an operational task, not a code blocker),
+Cleanverse API credentials/registration process.
+
+---
+
 ## Milestone 9 — Deployment readiness audit (Build 09)
 
 **Date:** 2026-08-08

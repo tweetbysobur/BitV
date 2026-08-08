@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {ProtocolErrors} from "../libraries/ProtocolErrors.sol";
 
 /**
  * @title BitVAccessManager
@@ -57,6 +58,7 @@ contract BitVAccessManager is AccessControl {
     bytes32 public constant ORACLE_MANAGER_ROLE = keccak256("ORACLE_MANAGER_ROLE");
 
     constructor(address admin) {
+        if (admin == address(0)) revert ProtocolErrors.ZeroAddress();
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(PROTOCOL_ADMIN_ROLE, admin);
         _grantRole(RISK_MANAGER_ROLE, admin);
