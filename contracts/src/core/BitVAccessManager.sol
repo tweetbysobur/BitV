@@ -21,6 +21,18 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
  *   PROTOCOL_ADMIN_ROLE so an incident responder doesn't also need
  *   risk-parameter or pool-creation power.
  *
+ * Build 05.1 adds two roles for the permissioned yield vault
+ * (docs/yield-vault-specification.md §8), reusing PROTOCOL_ADMIN_ROLE/
+ * RISK_MANAGER_ROLE/PAUSER_ROLE where the spec found them sufficient:
+ * - VAULT_MANAGER_ROLE: day-to-day vault operations — deposit/
+ *   withdrawal limits, vault cap, minimum liquidity reserve. Mirrors
+ *   POOL_MANAGER_ROLE's scope for pools.
+ * - STRATEGY_MANAGER_ROLE: setting/replacing a vault's active
+ *   strategy, strategy allocation cap, emergency strategy exit. Kept
+ *   separate from VAULT_MANAGER_ROLE because "which external code this
+ *   vault trusts" is a materially different decision from liquidity/
+ *   limit management.
+ *
  * Users are never granted any of these roles.
  */
 contract BitVAccessManager is AccessControl {
@@ -28,6 +40,8 @@ contract BitVAccessManager is AccessControl {
     bytes32 public constant RISK_MANAGER_ROLE = keccak256("RISK_MANAGER_ROLE");
     bytes32 public constant POOL_MANAGER_ROLE = keccak256("POOL_MANAGER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 public constant VAULT_MANAGER_ROLE = keccak256("VAULT_MANAGER_ROLE");
+    bytes32 public constant STRATEGY_MANAGER_ROLE = keccak256("STRATEGY_MANAGER_ROLE");
 
     constructor(address admin) {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -35,5 +49,7 @@ contract BitVAccessManager is AccessControl {
         _grantRole(RISK_MANAGER_ROLE, admin);
         _grantRole(POOL_MANAGER_ROLE, admin);
         _grantRole(PAUSER_ROLE, admin);
+        _grantRole(VAULT_MANAGER_ROLE, admin);
+        _grantRole(STRATEGY_MANAGER_ROLE, admin);
     }
 }

@@ -4,6 +4,77 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 5.2 — Permissioned yield vault implementation (Build 05.1)
+
+**Date:** 2026-08-08
+
+**Context:** Implements `docs/yield-vault-specification.md` (Build 05)
+exactly, per the approved architecture — no redesign. Existing lending/
+liquidation/compliance/BitScore contracts untouched.
+
+**Contracts created:**
+- `BitVYieldVault.sol` — `ERC4626 + BitVComplianceGuard +
+  BitVRoleConsumer + ReentrancyGuard`. Owns accounting, compliance,
+  limits, pause, and fee logic.
+- `IBitVVaultStrategy.sol` — vault↔strategy interface boundary.
+- `TestYieldStrategy.sol` — explicitly non-production placeholder
+  strategy (guarded constructor, no real yield claimed).
+- `VaultErrors.sol` — vault-specific error library.
+
+**Contracts modified:** `BitVAccessManager.sol` — added
+`VAULT_MANAGER_ROLE` and `STRATEGY_MANAGER_ROLE` (exactly two new
+roles, per spec §8).
+
+**Key decisions, matching the approved spec exactly:** ERC-4626 with a
+conservative fixed decimal offset of 6 (inflation-attack mitigation);
+CVI as the sole eligibility layer, BitScore not integrated; shares
+non-transferable (`_update` reverts on any real transfer); deposit/
+withdraw restricted to self-service (`receiver == owner == msg.sender`)
+as an implementation-level closure of an unenumerated-but-related
+bypass; performance-fee-only, capped at 20%, flowing to the existing
+`BitVTreasury` via its unmodified `receiveFee` entry point; vault
+liquidity kept completely independent from lending pools; safest-by-
+default limits (100% idle reserve, 0% strategy allocation) until an
+admin explicitly opts in.
+
+**Two real bugs found and fixed during implementation (not
+hypothetical):**
+1. The first fee design minted fee shares at the pre-mint price, then
+   immediately re-converted those same shares to assets at the
+   post-mint (self-diluted) price — under-paying a configured 10% fee
+   on a 500e18 profit by ~3.2% (48.4e18 instead of 50e18). Fixed by
+   tracking `accruedFeeShares`/`accruedFeeAssets` as an explicit ledger
+   at accrual time rather than re-deriving via a second conversion.
+2. The high-water-mark's zero initial value would have taxed a
+   *second* depositor's principal as if it were profit relative to the
+   first depositor's contribution. Fixed by bumping the mark by the
+   exact principal delta on every deposit/mint/withdraw/redeem/fee-
+   collection, so only genuine strategy-driven growth is ever taxed.
+
+**Tests created:** `BaseVaultTest.sol` fixture,
+`MockReentrantVaultERC20.sol`, `BitVYieldVault.t.sol` (44 scenario
+tests: access, accounting, security, strategy, fees, pause,
+compliance), `VaultHandler.sol` + `BitVYieldVaultInvariant.t.sol` (8
+fuzzed invariants, 256 runs / 128,000 calls each).
+
+**Full Foundry suite — actually executed:** `forge test` after a clean
+`forge build`. Result: **8 suites, 123 tests, 123 passed, 0 failed, 0
+skipped** — the two new vault suites plus all six pre-existing suites
+unchanged, confirming no regression to the lending/compliance/BitScore
+engine.
+
+**Not done (per instruction):** no pool-as-strategy integration, no
+BitScoreManager dependency, no production yield strategy, no RWA
+markets, no governance, nothing deployed.
+
+**Known limitations:** `maxWithdraw`/`maxRedeem` aren't overridden for
+real-time liquidity/pause signaling (actual `withdraw`/`redeem` still
+enforce correctly via reverts); emergency withdrawal is all-or-nothing,
+idle-only, and does not accrue the performance fee (deliberate
+simplifications, documented in `docs/yield-vault-implementation.md`).
+
+---
+
 ## Milestone 5.1 — Permissioned yield vault specification (Build 05, part 1)
 
 **Date:** 2026-08-08
