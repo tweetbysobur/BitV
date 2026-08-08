@@ -1,21 +1,18 @@
 # BitScore Implementation (Build 04)
 
-**Scale note (post-implementation spec update):** `docs/bitscore-
-specification.md` was subsequently revised to a 0–100 score range
-(from the 0–1000 range this document and the deployed contracts still
-use). That revision was explicitly documentation-only — no Solidity was
-touched. Everything below accurately describes the contracts as they
-exist right now (0–1000, start 300, tiers at 250/500/750). Treat every
-score number in this document as **on the pre-rescale 0–1000 scale**
-until a follow-up implementation milestone updates
-`BitScoreManager.sol` (and this document) to match the new
-specification — see that document's own status banner for the
-authoritative current target.
+**Scale note:** `BitScoreManager.sol` and `IBitScoreManager.sol` were
+updated to the approved **0–100 score range** (start 30, tiers at
+25/50/75) following the scale-reconciliation milestone. This document
+now describes that implementation. No production contract in this
+repository uses the earlier 0–1000 range; where the original 0–1000
+design is mentioned below it is purely historical, explaining what
+changed and why.
 
 Implements `docs/bitscore-specification.md` (as it stood at
-implementation time). This document records what was actually built,
-where implementation diverged from the spec's illustrative sketch (and
-why), and what remains a known limitation.
+implementation time, subsequently rescaled to 0–100 — see that
+document's own migration notes). This document records what was
+actually built, where implementation diverged from the spec's
+illustrative sketch (and why), and what remains a known limitation.
 
 ## Contract architecture
 
@@ -36,18 +33,26 @@ convention.
 ```solidity
 struct ScoreState {
     bool initialized;
-    uint16 positiveContribution;   // capped, decaying accumulator
+    uint8 positiveContribution;    // capped at maxPositiveContribution (<=100), decaying accumulator
     uint40 lastPositiveUpdateTimestamp;
-    uint16 liquidationPenalty;     // decaying
+    uint16 liquidationPenalty;     // unbounded downward in practice, decaying
     uint40 lastLiquidationTimestamp;
-    uint16 badDebtPenalty;         // permanent, never decays
-    uint16 tenureCredited;         // tenure points already granted, so they aren't re-added
+    uint16 badDebtPenalty;         // unbounded downward, permanent, never decays
+    uint8 tenureCredited;          // tenure points already granted, so they aren't re-added
     uint32 successfulRepayments;   // count, informational
     uint32 liquidationCount;       // count, informational
     uint32 badDebtCount;           // count, informational
     uint40 firstActivityTimestamp;
 }
 ```
+
+`positiveContribution` and `tenureCredited` are `uint8` — sufficient
+range for the 0–100 scale's 0–70 positive-contribution cap. `liquidationPenalty`
+and `badDebtPenalty` stay `uint16` deliberately, not narrowed to `uint8`:
+both are unbounded accumulators (repeated liquidations/bad debts can sum
+past 100 even though the final clamped score can never go below 0), so
+narrowing them would risk silent overflow rather than save meaningful
+storage.
 
 **Deviation from the spec's sketch, documented explicitly (per the task's
 "do not redesign unless implementation reveals a direct contradiction"
@@ -57,7 +62,7 @@ the spec described separate decay windows per input category (repayments
 consolidates every positive input (repayments, timeliness, tenure,
 low-utilization bonus) into **one** decaying `positiveContribution`
 accumulator with a single decay window. The per-input *point values* and
-the *overall cap* (700) are preserved from the spec; only the "how many
+the *overall cap* (70) are preserved from the spec; only the "how many
 separate decay clocks" mechanic was simplified, for a smaller, more
 auditable state struct and fewer interacting decay curves to reason
 about. Liquidation penalties still decay on their own, slower, separate
@@ -74,30 +79,23 @@ pure view that applies the same decay formula without writing state, so
 reads are always consistent with "decay as of now" without needing a
 keeper to periodically touch every user's storage.
 
-**Empirically observed behavior worth documenting**: because decay is
-recalculated relative to the *previous* update on every new event, an
-accumulator that receives events frequently relative to its decay window
-converges toward a stable equilibrium **below** the nominal cap, rather
-than climbing linearly toward it and stopping. At this deployment's
-default parameters (180-day decay window, qualifying repayments roughly
-every 2 days in the test fixture's cadence), the positive accumulator
-equilibrates in the mid-500s (raw) rather than reaching 700 — i.e. a
-sustained, maximally-active user's score plateaus somewhere in the
-800s–900s under these specific parameters, not exactly at 1000. This is
-consistent with the design intent (the cap is a ceiling that's *never
-exceeded*, verified by both scenario and fuzzed invariant tests) but
-worth knowing explicitly: **reaching literally 1000 requires either a
-much longer time horizon, less frequent decay-triggering events per
-point earned, or `RISK_MANAGER_ROLE`-tuned parameters** — it is not
-something a test needed to demonstrate to prove the cap itself is safe
-(and the invariant test suite proves the cap holds under arbitrary
-fuzzed activity, not just the scenario tests' specific cadence).
+**Empirically observed behavior, verified via a temporary debug trace at
+this milestone's per-event deltas** (`repaymentPoints = 3`,
+`timelinessPoints = 1`, 180-day decay window, qualifying repayments every
+2 days in the test fixture's cadence): unlike the original 0–1000 design,
+the smaller absolute cap (+70) relative to the per-event delta (+4) means
+the accumulator reaches its nominal cap directly rather than merely
+approaching an equilibrium below it — the score saturates at 100 within
+roughly two dozen qualifying events at this cadence, and the hard clamp
+in `getScore()` is never violated at any point along the way (proven both
+by the reaching-100 scenario tests and by the fuzzed invariant test,
+which does not depend on any particular event cadence).
 
 ## Tier calculation
 
 Pure function of the decayed score, four bands exactly as specified:
-Restricted (0–249), Standard (250–499, includes the 300 starting score),
-Established (500–749), Trusted (750–1000). `_tierOf` is `internal pure`,
+Restricted (0–24), Standard (25–49, includes the 30 starting score),
+Established (50–74), Trusted (75–100). `_tierOf` is `internal pure`,
 called by both `getTier` and internally wherever a tier-dependent
 adjustment is computed — no separate on-chain "current tier" storage
 field exists, since it's always cheap to derive from the score.
@@ -216,8 +214,8 @@ Exactly the spec's Section 12 table, implemented via Solidity
 |---|---|
 | BitScore unavailable (`bitScoreManager == address(0)`) | Every integration point checks this first and returns/skips before attempting a call |
 | BitScore call reverts (unexpected internal failure) | `try`/`catch` around `getAdjustedAvailableBorrowValue`, `getBaseRateDiscountRay`, and all three `record*` calls; `catch` returns the base/neutral value (LTV, rate) or silently no-ops (repayment/liquidation/utilization recording), emitting `BitScoreUpdateFailed(user, action)` for the recording failures so it's observable off-chain without blocking the real economic action |
-| Score corrupted (out-of-range stored value) | Not independently reachable given `getScore`'s own `int256` clamp to `[0, 1000]` before casting back to `uint16` — the clamp runs on every read, not just at write time |
-| Missing score (first interaction) | `ScoreState.initialized == false` → `getScore` returns `params.startScore` (300) directly, without touching storage |
+| Score corrupted (out-of-range stored value) | Not independently reachable given `getScore`'s own `int256` clamp to `[0, 100]` before casting back to `uint8` — the clamp runs on every read, not just at write time |
+| Missing score (first interaction) | `ScoreState.initialized == false` → `getScore` returns `params.startScore` (30) directly, without touching storage |
 | Score at floor (0) | Not an error state — Tier 0 behavior applies (protective reduction), the user is not blocked from the protocol (CVI remains the only eligibility gate) |
 | Cleanverse verification unavailable | Unrelated to BitScore — `BitVComplianceGuard._requireCompliance` reverts before any BitScore call is ever reached; unchanged from Build 02.x |
 
@@ -316,11 +314,12 @@ integration function correctly — not a scope-creep rewrite of repay().
 
 - **Interest rate adjustment is quoted-only** (see above) — a real
   per-user rate is out of scope without a shared-index redesign.
-- **Decay convergence below nominal cap at frequent event cadences**
-  (see "Score updates" above) — documented, not a safety issue (the cap
-  itself is never violated, proven by fuzzed invariant), but means
-  "reaching exactly 1000" isn't guaranteed within any bounded number of
-  events at default parameters.
+- **Decay-tempered growth** (see "Score updates" above) — at the 0–100
+  scale's smaller cap the accumulator does reach the nominal +70 cap
+  under sustained activity, but growth per event is still
+  decay-tempered rather than strictly linear; the cap itself is never
+  violated regardless (proven by fuzzed invariant, not just scenario
+  tests at one cadence).
 - **Wash-borrowing remains unresolved**, exactly as the specification
   flagged — nothing in this implementation adds a mitigation beyond
   what Section 8 of the spec already described (rate-limiting via caps/

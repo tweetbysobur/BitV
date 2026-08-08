@@ -16,14 +16,16 @@ contract BitScoreManagerTest is BaseProtocolTest {
     }
 
     /// Score growth per qualifying repayment is decay-tempered (see
-    /// BitScoreManager's "decay-then-add" pattern), so it's noticeably
-    /// less than the raw +7 (5 repayment + 2 timeliness) points per
-    /// event once compounded across many calls — empirically closer to
-    /// +4/call at this fixture's 2-day-per-iteration cadence. This
-    /// helper repeats `_borrowAndFullyRepayAfter` until either the
-    /// target tier is reached or `maxIterations` is exhausted, so tests
-    /// don't hardcode an iteration count that happens to be too low for
-    /// the real (tempered) growth rate.
+    /// BitScoreManager's "decay-then-add" pattern), so it's slightly
+    /// less than the raw +4 (3 repayment + 1 timeliness) points per
+    /// event once compounded across many calls — empirically Tier 2
+    /// (score >=50) is reached around iteration 6 and Tier 3 (score
+    /// >=75) around iteration 14 at this fixture's 2-day-per-iteration
+    /// cadence (verified via a temporary debug trace). This helper
+    /// repeats `_borrowAndFullyRepayAfter` until either the target tier
+    /// is reached or `maxIterations` is exhausted, so tests don't
+    /// hardcode an iteration count that happens to be too low for the
+    /// real (tempered) growth rate.
     function _repayUntilTier(address user, uint8 targetTier, uint256 maxIterations) internal {
         for (uint256 i = 0; i < maxIterations; i++) {
             if (bitScoreManager.getTier(user) >= targetTier) return;
@@ -58,7 +60,7 @@ contract BitScoreManagerTest is BaseProtocolTest {
     // 1. Initial score
     function test_InitialScore_IsStartingScoreForNeverSeenWallet() public view {
         address neverSeen = address(0xABCD);
-        assertEq(bitScoreManager.getScore(neverSeen), 300);
+        assertEq(bitScoreManager.getScore(neverSeen), 30);
         assertEq(bitScoreManager.getTier(neverSeen), 1); // Standard
     }
 
@@ -216,29 +218,28 @@ contract BitScoreManagerTest is BaseProtocolTest {
         assertGt(bitScoreManager.getScore(borrower), afterLiquidation);
     }
 
-    // 9. Score cap at 1000
+    // 9. Score cap at 100
     function test_ScoreNeverExceedsMax() public {
         _supplyLiquidity(10_000_000e18);
         _depositCollateral(borrower, 100e18);
 
         // The "decay-then-add" positive-contribution model (see
-        // BitScoreManager's NatSpec) converges toward an equilibrium
-        // determined by event frequency vs. the decay window rather than
-        // hitting the nominal 700-point cap outright at this cadence —
-        // that's expected, not a bug: what actually matters is that the
-        // hard clamp in getScore() is never violated regardless of how
-        // much qualifying activity occurs. 250 iterations is enough to
-        // approach a stable high score without needing to reach exactly
-        // 1000 for this assertion to be meaningful.
-        uint16 previous = bitScoreManager.getScore(borrower);
+        // BitScoreManager's NatSpec) converges toward the nominal +70
+        // cap (score 100) within roughly two dozen qualifying events at
+        // this cadence (empirically verified via a temporary debug
+        // trace) — what actually matters is that the hard clamp in
+        // getScore() is never violated regardless of how much
+        // qualifying activity occurs. 250 iterations is comfortably
+        // beyond that point.
+        uint8 previous = bitScoreManager.getScore(borrower);
         for (uint256 i = 0; i < 250; i++) {
             _borrowAndFullyRepayAfter(borrower, 100e18, 2 days);
-            uint16 current = bitScoreManager.getScore(borrower);
-            assertLe(current, 1000); // never exceeded, every single step
+            uint8 current = bitScoreManager.getScore(borrower);
+            assertLe(current, 100); // never exceeded, every single step
             previous = current;
         }
-        assertLe(previous, 1000);
-        assertGt(previous, 800); // sustained activity clearly pushed it well above the 300 baseline
+        assertLe(previous, 100);
+        assertGt(previous, 80); // sustained activity clearly pushed it well above the 30 baseline
     }
 
     // 10. Score floor at 0
@@ -282,8 +283,8 @@ contract BitScoreManagerTest is BaseProtocolTest {
         _supplyLiquidity(1_000_000e18);
         _depositCollateral(borrower, 10e18);
 
-        // 300 (Tier 1) -> push toward Tier 2 (>=500) via repeated repayments.
-        _repayUntilTier(borrower, 2, 150);
+        // 30 (Tier 1) -> push toward Tier 2 (>=50) via repeated repayments.
+        _repayUntilTier(borrower, 2, 30);
 
         assertEq(bitScoreManager.getTier(borrower), 2);
     }
@@ -298,7 +299,7 @@ contract BitScoreManagerTest is BaseProtocolTest {
         assertEq(effectiveAtTier1, baseAvailable); // Tier 1: no adjustment
 
         // Push to Tier 3 (>=750) via sustained repayments.
-        _repayUntilTier(borrower, 3, 200);
+        _repayUntilTier(borrower, 3, 30);
         assertEq(bitScoreManager.getTier(borrower), 3);
 
         uint256 effectiveAtTier3 = lendingManager.getEffectiveAvailableBorrowValue(borrower);
@@ -315,7 +316,7 @@ contract BitScoreManagerTest is BaseProtocolTest {
 
         _supplyLiquidity(1_000_000e18);
         _depositCollateral(borrower, 10e18);
-        _repayUntilTier(borrower, 3, 200);
+        _repayUntilTier(borrower, 3, 30);
         assertEq(bitScoreManager.getTier(borrower), 3);
 
         assertGt(lendingManager.getQuotedBaseRateDiscountRay(borrower), 0);
@@ -363,7 +364,7 @@ contract BitScoreManagerTest is BaseProtocolTest {
     // 16. Missing score fallback
     function test_MissingScore_FallsBackToStandardTierDefaults() public {
         address brandNew = makeAddr("brandNewWallet");
-        assertEq(bitScoreManager.getScore(brandNew), 300);
+        assertEq(bitScoreManager.getScore(brandNew), 30);
         assertEq(bitScoreManager.getTier(brandNew), 1);
     }
 
@@ -390,7 +391,7 @@ contract BitScoreManagerTest is BaseProtocolTest {
         _supplyLiquidity(1_000_000e18);
         _depositCollateral(borrower, 10e18); // $20,000 collateral
 
-        _repayUntilTier(borrower, 3, 200);
+        _repayUntilTier(borrower, 3, 30);
         assertEq(bitScoreManager.getTier(borrower), 3);
 
         // Ceiling: 78% of $20,000 = $15,600. Attempting to borrow $15,700
@@ -428,7 +429,7 @@ contract BitScoreManagerTest is BaseProtocolTest {
         // at the end.
         for (uint256 i = 0; i < 300; i++) {
             _borrowAndFullyRepayAfter(borrower, 10e18, 2 days);
-            assertLe(bitScoreManager.getScore(borrower), 1000);
+            assertLe(bitScoreManager.getScore(borrower), 100);
         }
     }
 }

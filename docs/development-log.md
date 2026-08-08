@@ -4,6 +4,86 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 4.2 — BitScore scale reconciliation (0–1000 → 0–100, Solidity)
+
+**Date:** 2026-08-08
+
+**Context:** Milestone 4.1 rescaled `docs/bitscore-specification.md` to
+0–100 but explicitly left the deployed `BitScoreManager.sol` on the
+original 0–1000 scale, creating a known spec-vs-implementation
+disagreement. This milestone reconciles them: the contracts now
+implement the approved 0–100 model exactly, and no production Solidity
+in the repository uses the old scale.
+
+**Contracts modified:**
+- `contracts/src/interfaces/IBitScoreManager.sol` — `getScore` return
+  type changed `uint16` → `uint8`.
+- `contracts/src/core/BitScoreManager.sol` — fully rewritten to the
+  0–100 scale: `MIN_SCORE = 0`, `MAX_SCORE = 100`, tier floors
+  `25/50/75` (Restricted 0–24, Standard 25–49, Established 50–74,
+  Trusted 75–100); `Params.startScore = 30`; contribution point deltas
+  redesigned to fit the approved caps (repayment +3, timeliness +1 —
+  together capping under the spec's +35 repayment-and-timeliness
+  allowance well before the overall +70 max positive contribution is
+  reached; tenure +1/period up to a +5 cap; low-utilization bonus +1);
+  liquidation penalties `-10` full / `-5` partial; bad debt `-30`,
+  permanent. `ScoreState.positiveContribution` and `.tenureCredited`
+  narrowed to `uint8` (sufficient for the 0–70 cap); `liquidationPenalty`
+  and `badDebtPenalty` deliberately kept `uint16` (unbounded downward
+  accumulators — narrowing to `uint8` would risk silent overflow across
+  repeated liquidations/bad debts even though the final clamped score
+  can never go below 0). No fixed-point/decipoint representation was
+  introduced — the approved 0–100 caps and penalties are whole numbers,
+  so plain integers are simpler and equally exact.
+
+**Formula, unchanged in shape:** `score = clamp(30 + capped positive
+contributions − decayed liquidation penalties − permanent bad-debt
+penalties, 0, 100)` — same "decay-then-add" accumulator architecture as
+Build 04, only the scale-dependent constants changed.
+
+**Tests updated:** `contracts/test/unit/BitScoreManager.t.sol` (21
+tests) and `contracts/test/invariant/BitVInvariant.t.sol`'s BitScore
+invariants — every hardcoded 300/700/1000-scale literal replaced with
+its 0–100 equivalent (30/70/100). `_repayUntilTier`'s iteration budgets
+were recalibrated empirically (via a temporary `console2.log` debug
+trace, not kept) for the new per-event point deltas: at the test
+fixture's cadence, Tier 2 is reached around iteration 6 and Tier 3
+around iteration 14, and the positive accumulator now reaches its
+nominal +70 cap directly (score saturates at 100) within roughly two
+dozen events, rather than merely approaching an equilibrium below the
+cap as the old 0–1000/700-point design did — reflected in updated test
+comments and assertions.
+
+**Verification — repo-wide sweep for `1000`/`300`/`0–1000`/`0-1000`:**
+searched the entire repository. Every remaining occurrence outside test
+literals (now fixed) is either (a) historical documentation explaining
+the migration (`docs/bitscore-specification.md`'s and
+`docs/development-log.md`'s own prior-milestone entries, both
+deliberately preserved as history), or (b) explanatory comments in
+`BitScoreManager.sol`/`IBitScoreManager.sol` that name the old scale
+only to contrast it with the current one (no numeric `1000`/`300`
+constant is actually used in any computation). No production BitScore
+logic remains on the old scale. `docs/bitscore-implementation.md` was
+rewritten to describe the new 0–100 implementation (its prior "still
+0-1000" status banner removed).
+
+**Full Foundry suite — actually executed, all suites, not just
+BitScore:** `forge test` (after `forge build` confirmed a clean
+compile). Result: **6 suites, 71 tests, 71 passed, 0 failed, 0
+skipped** — `BitVComplianceGuard.t.sol` (11), `BitVLendingManager.t.sol`
+(12), `BitVPoolManager.t.sol` (12), `BitScoreManager.t.sol` (21),
+`BitVLiquidation.t.sol` (7), and `BitVInvariant.t.sol` (8 invariants,
+256 runs / 128,000 calls each, 0 reverts). The pre-existing
+non-BitScore suites (compliance/pool/lending/liquidation) pass
+unchanged, confirming the rescale did not regress the lending engine.
+
+**Not done:** no architecture change beyond the scale itself (same
+accumulator design, same triple-clamped LTV integration, same
+quoted-only interest adjustment, same fail-safe try/catch pattern) — per
+instruction, this was a scale reconciliation, not a redesign.
+
+---
+
 ## Milestone 4.1 — BitScore specification rescale to 0–100 (docs only)
 
 **Date:** 2026-08-08

@@ -95,9 +95,9 @@ contract BitVInvariantTest is BaseProtocolTest {
     /// Score never exceeds the documented maximum, for every actor,
     /// after any sequence of fuzzed activity.
     function invariant_ScoreNeverExceedsMax() public view {
-        assertLe(bitScoreManager.getScore(supplier), 1000);
-        assertLe(bitScoreManager.getScore(borrower), 1000);
-        assertLe(bitScoreManager.getScore(liquidator), 1000);
+        assertLe(bitScoreManager.getScore(supplier), 100);
+        assertLe(bitScoreManager.getScore(borrower), 100);
+        assertLe(bitScoreManager.getScore(liquidator), 100);
     }
 
     /// Score never falls below the documented minimum. Trivially true

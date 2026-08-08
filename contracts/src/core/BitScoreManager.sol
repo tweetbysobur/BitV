@@ -8,7 +8,9 @@ import {IBitScoreManager} from "../interfaces/IBitScoreManager.sol";
 /**
  * @title BitScoreManager
  * @notice BitV's protocol-level risk layer, per
- * docs/bitscore-specification.md. NOT a Cleanverse primitive — CVI
+ * docs/bitscore-specification.md — **0-100 scale** (starting score 30,
+ * tiers at 25/50/75, per this specification's rescale from the
+ * original 0-1000 design). NOT a Cleanverse primitive — CVI
  * (`IAPassComplianceValidator.complianceVerify`) remains the sole
  * eligibility gate; BitScore only ever adjusts *how favorable* terms
  * are for an already-eligible user, within the asset's own configured
@@ -22,21 +24,28 @@ import {IBitScoreManager} from "../interfaces/IBitScoreManager.sol";
  * 180d, utilization/collateralization 30d). This implementation
  * consolidates all positive inputs into a single decaying
  * `positiveContribution` accumulator with one decay window, for a
- * simpler, more auditable state model — the per-input *point values*
- * and the overall *cap* are preserved from the spec; only the "how many
- * separate decay clocks" mechanic was simplified. Liquidation penalties
- * decay on their own, slower clock; bad-debt penalties never decay —
- * both exactly as specified.
+ * simpler, more auditable state model — the overall cap (70) is
+ * preserved from the spec; only the "how many separate decay clocks"
+ * mechanic was simplified. Liquidation penalties decay on their own,
+ * slower clock; bad-debt penalties never decay — both exactly as
+ * specified.
+ *
+ * Every point value below is a plain integer directly on the 0-100
+ * scale — no fixed-point/decipoint representation, since the approved
+ * 0-100 rescale gave whole-number caps and penalties
+ * (docs/bitscore-specification.md's "Contribution limits"/"Penalties"
+ * sections) that don't need sub-integer precision the way the original
+ * illustrative 0-1000 point deltas implied.
  */
 contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
     struct ScoreState {
         bool initialized;
-        uint16 positiveContribution; // capped, decaying accumulator (repayments/timeliness/tenure/utilization)
+        uint8 positiveContribution; // capped at maxPositiveContribution (<=100), decaying accumulator
         uint40 lastPositiveUpdateTimestamp;
-        uint16 liquidationPenalty; // decaying
+        uint16 liquidationPenalty; // unbounded downward in practice (score itself clamps at 0), decaying
         uint40 lastLiquidationTimestamp;
-        uint16 badDebtPenalty; // permanent, never decays
-        uint16 tenureCredited; // portion of positiveContribution already attributed to tenure, so tenure isn't re-added every call
+        uint16 badDebtPenalty; // unbounded downward, permanent — never decays
+        uint8 tenureCredited; // portion of positiveContribution already attributed to tenure, so tenure isn't re-added every call
         uint32 successfulRepayments;
         uint32 liquidationCount;
         uint32 badDebtCount;
@@ -44,35 +53,41 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
     }
 
     struct Params {
-        uint16 startScore; // 300
-        uint16 maxPositiveContribution; // 700 -> max score 1000
+        uint8 startScore; // 30
+        uint8 maxPositiveContribution; // 70 -> max score 100 (30 + 70)
         uint32 positiveDecayWindowSeconds; // 180 days
         uint32 liquidationDecayWindowSeconds; // 365 days
-        uint16 repaymentPoints; // +5 per qualifying full-close repayment
-        uint16 timelinessPoints; // +2 per qualifying repayment closed while healthy
+        uint8 repaymentPoints; // +3 per qualifying full-close repayment
+        uint8 timelinessPoints; // +1 per qualifying repayment closed while healthy
         uint32 minPositionDurationSeconds; // 1 day — below this, zero credit (anti-gaming)
         uint32 tenurePeriodSeconds; // 30 days
-        uint16 tenurePointsPerPeriod; // +1 per period
-        uint16 tenureCap; // 50 total from tenure
-        uint16 fullLiquidationPenalty; // -100
-        uint16 partialLiquidationPenalty; // -50
-        uint16 badDebtPenaltyPoints; // -300, never decays
-        uint16 lowUtilizationBonusPoints; // +1, sustained low utilization/high health factor
+        uint8 tenurePointsPerPeriod; // +1 per period
+        uint8 tenureCap; // 5 total from tenure
+        uint8 fullLiquidationPenalty; // -10
+        uint8 partialLiquidationPenalty; // -5
+        uint8 badDebtPenaltyPoints; // -30, never decays
+        uint8 lowUtilizationBonusPoints; // +1, sustained low utilization/high health factor
         uint16 lowUtilizationThresholdBps; // e.g. 3000 = 30%
         uint16 healthyHealthFactorBps; // e.g. 15000 = 1.5x, in "healthFactorBps" terms as passed by the caller
     }
 
-    uint16 public constant MIN_SCORE = 0;
-    uint16 public constant MAX_SCORE = 1000;
-    uint16 public constant TIER_1_FLOOR = 250; // Standard
-    uint16 public constant TIER_2_FLOOR = 500; // Established
-    uint16 public constant TIER_3_FLOOR = 750; // Trusted
+    /// @dev All score-scale constants below are on the approved 0-100
+    /// scale (docs/bitscore-specification.md). No 0-1000 production
+    /// value remains anywhere in this contract.
+    uint8 public constant MIN_SCORE = 0;
+    uint8 public constant MAX_SCORE = 100;
+    uint8 public constant TIER_1_FLOOR = 25; // Standard
+    uint8 public constant TIER_2_FLOOR = 50; // Established
+    uint8 public constant TIER_3_FLOOR = 75; // Trusted
 
     // Build 04: bounded, deterministic per-tier LTV headroom fractions
     // (of the gap between base ltvBps and the asset's configured
     // maxLtvWithScoreBps) and interest quote discounts. Tier 0 instead
     // applies a *protective reduction* fraction to the base available
     // borrow value. All RISK_MANAGER_ROLE-tunable via setTierAdjustments.
+    // Independent of the score's 0-100 vs 0-1000 scale (these are
+    // basis-point/ray fractions, not score-unit values), so unaffected
+    // by the rescale.
     struct TierAdjustment {
         int16 ltvHeadroomBps; // Tier1-3: 0..10000 fraction of headroom granted; Tier0: negative = protective reduction fraction of base
         uint256 baseRateDiscountRay; // quoted only, see IBitScoreManager.getBaseRateDiscountRay
@@ -88,7 +103,7 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
     event LendingManagerSet(address indexed lendingManager);
     event ParamsUpdated();
     event TierAdjustmentsUpdated();
-    event ScoreUpdated(address indexed user, uint16 oldScore, uint16 newScore, bytes32 reason);
+    event ScoreUpdated(address indexed user, uint8 oldScore, uint8 newScore, bytes32 reason);
     event TierChanged(address indexed user, uint8 oldTier, uint8 newTier);
     event EmergencyReset(address indexed user, address indexed admin);
 
@@ -99,19 +114,19 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
 
     constructor(address accessManager) BitVRoleConsumer(accessManager) {
         params = Params({
-            startScore: 300,
-            maxPositiveContribution: 700,
+            startScore: 30,
+            maxPositiveContribution: 70,
             positiveDecayWindowSeconds: 180 days,
             liquidationDecayWindowSeconds: 365 days,
-            repaymentPoints: 5,
-            timelinessPoints: 2,
+            repaymentPoints: 3,
+            timelinessPoints: 1,
             minPositionDurationSeconds: 1 days,
             tenurePeriodSeconds: 30 days,
             tenurePointsPerPeriod: 1,
-            tenureCap: 50,
-            fullLiquidationPenalty: 100,
-            partialLiquidationPenalty: 50,
-            badDebtPenaltyPoints: 300,
+            tenureCap: 5,
+            fullLiquidationPenalty: 10,
+            partialLiquidationPenalty: 5,
+            badDebtPenaltyPoints: 30,
             lowUtilizationBonusPoints: 1,
             lowUtilizationThresholdBps: 3_000,
             healthyHealthFactorBps: 15_000
@@ -137,6 +152,7 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
 
     function setParams(Params calldata newParams) external onlyRole(ACCESS_MANAGER.RISK_MANAGER_ROLE()) {
         if (newParams.maxPositiveContribution > MAX_SCORE) revert ProtocolErrors.InvalidRiskParams();
+        if (newParams.startScore > MAX_SCORE) revert ProtocolErrors.InvalidRiskParams();
         params = newParams;
         emit ParamsUpdated();
     }
@@ -166,7 +182,8 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
 
     // ── Views ────────────────────────────────────────────────────────────
 
-    function getScore(address user) public view returns (uint16) {
+    /// @notice Current score on the 0-100 scale (docs/bitscore-specification.md).
+    function getScore(address user) public view returns (uint8) {
         ScoreState storage s = _scores[user];
         if (!s.initialized) return params.startScore;
 
@@ -179,7 +196,7 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
 
         if (raw < int256(uint256(MIN_SCORE))) return MIN_SCORE;
         if (raw > int256(uint256(MAX_SCORE))) return MAX_SCORE;
-        return uint16(uint256(raw));
+        return uint8(uint256(raw));
     }
 
     function getTier(address user) public view returns (uint8) {
@@ -194,7 +211,7 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
         external
         view
         returns (
-            uint16 positiveContribution,
+            uint8 positiveContribution,
             uint16 liquidationPenalty,
             uint16 badDebtPenalty,
             uint32 successfulRepayments,
@@ -220,7 +237,7 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
         return params;
     }
 
-    function _tierOf(uint16 score) internal pure returns (uint8) {
+    function _tierOf(uint8 score) internal pure returns (uint8) {
         if (score >= TIER_3_FLOOR) return 3;
         if (score >= TIER_2_FLOOR) return 2;
         if (score >= TIER_1_FLOOR) return 1;
@@ -284,7 +301,7 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
         onlyLendingManager
     {
         ScoreState storage s = _scores[user];
-        uint16 scoreBefore = getScore(user);
+        uint8 scoreBefore = getScore(user);
         uint8 tierBefore = _tierOf(scoreBefore);
         _ensureInitialized(s);
 
@@ -307,7 +324,7 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
 
     function recordLiquidation(address user, bool wasBadDebt, bool wasPartial) external onlyLendingManager {
         ScoreState storage s = _scores[user];
-        uint16 scoreBefore = getScore(user);
+        uint8 scoreBefore = getScore(user);
         uint8 tierBefore = _tierOf(scoreBefore);
         _ensureInitialized(s);
 
@@ -316,7 +333,7 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
             s.badDebtPenalty = newBadDebt > type(uint16).max ? type(uint16).max : uint16(newBadDebt);
             s.badDebtCount += 1;
         } else {
-            uint16 points = wasPartial ? params.partialLiquidationPenalty : params.fullLiquidationPenalty;
+            uint8 points = wasPartial ? params.partialLiquidationPenalty : params.fullLiquidationPenalty;
             _applyLiquidationPenalty(s, points);
             s.liquidationCount += 1;
         }
@@ -329,7 +346,7 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
         onlyLendingManager
     {
         ScoreState storage s = _scores[user];
-        uint16 scoreBefore = getScore(user);
+        uint8 scoreBefore = getScore(user);
         uint8 tierBefore = _tierOf(scoreBefore);
         _ensureInitialized(s);
 
@@ -361,7 +378,7 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
         if (earned > params.tenureCap) earned = params.tenureCap;
         if (earned > s.tenureCredited) {
             uint256 delta = earned - s.tenureCredited;
-            s.tenureCredited = uint16(earned);
+            s.tenureCredited = uint8(earned);
             _applyPositiveDelta(s, int256(delta));
         }
     }
@@ -373,27 +390,27 @@ contract BitScoreManager is BitVRoleConsumer, IBitScoreManager {
         if (newValue > int256(uint256(params.maxPositiveContribution))) {
             newValue = int256(uint256(params.maxPositiveContribution));
         }
-        s.positiveContribution = uint16(uint256(newValue));
+        s.positiveContribution = uint8(uint256(newValue));
         s.lastPositiveUpdateTimestamp = uint40(block.timestamp);
     }
 
-    function _applyLiquidationPenalty(ScoreState storage s, uint16 points) internal {
+    function _applyLiquidationPenalty(ScoreState storage s, uint8 points) internal {
         uint256 decayed = _decay(s.liquidationPenalty, s.lastLiquidationTimestamp, params.liquidationDecayWindowSeconds);
         uint256 newValue = decayed + uint256(points);
         s.liquidationPenalty = newValue > type(uint16).max ? type(uint16).max : uint16(newValue);
         s.lastLiquidationTimestamp = uint40(block.timestamp);
     }
 
-    function _decay(uint16 raw, uint40 lastUpdate, uint32 window) internal view returns (uint256) {
+    function _decay(uint256 raw, uint40 lastUpdate, uint32 window) internal view returns (uint256) {
         if (raw == 0) return 0;
         if (lastUpdate == 0) return raw;
         uint256 elapsed = block.timestamp - uint256(lastUpdate);
         if (elapsed >= window) return 0;
-        return (uint256(raw) * (uint256(window) - elapsed)) / window;
+        return (raw * (uint256(window) - elapsed)) / window;
     }
 
-    function _emitScoreChange(address user, uint16 scoreBefore, uint8 tierBefore, bytes32 reason) internal {
-        uint16 scoreAfter = getScore(user);
+    function _emitScoreChange(address user, uint8 scoreBefore, uint8 tierBefore, bytes32 reason) internal {
+        uint8 scoreAfter = getScore(user);
         emit ScoreUpdated(user, scoreBefore, scoreAfter, reason);
         uint8 tierAfter = _tierOf(scoreAfter);
         if (tierAfter != tierBefore) {

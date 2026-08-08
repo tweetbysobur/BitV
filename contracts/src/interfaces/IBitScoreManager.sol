@@ -10,7 +10,9 @@ pragma solidity ^0.8.24;
  * docs/bitscore-implementation.md.
  */
 interface IBitScoreManager {
-    function getScore(address user) external view returns (uint16 score);
+    /// @notice Score on BitV's 0-100 scale (docs/bitscore-specification.md),
+    /// not the earlier 0-1000 scale — uint8 is sufficient range.
+    function getScore(address user) external view returns (uint8 score);
     function getTier(address user) external view returns (uint8 tier);
 
     /// @notice Returns the score-adjusted available-borrow-value ceiling
