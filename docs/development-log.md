@@ -4,6 +4,55 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 9 — Deployment readiness audit (Build 09)
+
+**Date:** 2026-08-08
+
+**Context:** Audit-only milestone — no deployment, no economics changes,
+no new DeFi features, no undocumented Cleanverse functionality. Produced
+a full deployment inventory, dependency graph, constructor audit, role
+matrix, external-dependency/oracle/asset/Cleanverse classification, an
+extended (but unrun) `contracts/script/Deploy.s.sol`, a new (unrun)
+`contracts/script/ValidateDeployment.s.sol`, and a testnet smoke-test
+plan — see `docs/deployment-readiness.md` and
+`docs/testnet-smoke-test.md`.
+
+**Key finding:** the entire compliance-gated half of the protocol
+(`BitVPoolManager`, `BitVLendingManager`, `BitVYieldVault`, and
+transitively `BitVRWACollateralRegistry`) is **blocked** on Cleanverse
+confirming a CVI validator address — and Monad Testnet support at
+all — for any network; neither has been confirmed by either official
+Cleanverse PDF. `BitVAccessManager`, `BitVTreasury`, `BitScoreManager`,
+and `BitVCVAAdapter` have no such dependency and can deploy today.
+`StaticPriceOracle` remains explicitly testnet-only/non-production; no
+production oracle exists or has been selected. No real Monad Testnet
+asset addresses are confirmed anywhere in the repo. `BitVVaultManager`
+(superseded, dead code) and `TestYieldStrategy`/mocks are confirmed
+excluded from any production deployment.
+
+**No circular constructor dependency exists** — the two contracts that
+reference each other (`BitVPoolManager.lendingManager` /
+`BitScoreManager.lendingManager`) are wired via existing post-deployment
+setters, not constructor arguments.
+
+**Flagged, not fixed (reported per this milestone's scope, no code
+changed to address them):** `BitVAccessManager`'s constructor and
+`BitVYieldVault`'s `asset_` parameter have no explicit zero-address
+guard; the prepared deployment script passes the single deployer address
+as every `Ownable` owner across `BitVPoolManager`/`BitVLendingManager`/
+`BitVYieldVault`, concentrating Cleanverse rule-management privilege in
+one EOA until deliberately transferred.
+
+**Verification:** `forge build` clean; `forge test` reconfirmed
+218/218 (12 suites, all 4 invariant suites unchanged) — no
+`contracts/src/**` file was modified, only two script files added/
+extended; 41/41 Vitest; `npm run lint` clean; `npm run build` succeeds
+(same two pre-existing, unrelated optional-dependency warnings as
+Build 08). `services/contracts/addresses.ts` required no change — it
+was already structured correctly to stay empty until real deployment.
+
+---
+
 ## Milestone 8 — Protocol dashboard + risk intelligence (Build 08)
 
 **Date:** 2026-08-08
