@@ -4,6 +4,68 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 7.1 — CVA integration specification (Build 07)
+
+**Date:** 2026-08-08
+
+**Context:** Documentation-only. No Solidity written or modified —
+every existing contract (`BitVAccessManager`, `BitVComplianceGuard`,
+`BitVPoolManager`, `BitVLendingManager`, `BitVVaultManager`,
+`BitScoreManager`, `BitVTreasury`, `BitVRWACollateralRegistry`) is
+untouched. No new Cleanverse source material was available this
+milestone — this specification is built entirely from the two official
+PDFs already transcribed in `docs/cleanverse-integration.md` (Build
+02.1/02.5/02.6); nothing was re-derived or re-searched beyond that
+existing transcription.
+
+**Deliverable:** `docs/cva-integration-specification.md` — full
+specification covering the CVA definition, registration flow, exact
+(and honestly incomplete) contract interface, RuleV2 semantics, the
+transfer flow, a proposed `BitVCVAAdapter`, RWA registry integration,
+lending/vault integration, settlement (mostly `UNCONFIRMED`),
+compliance ordering, failure handling, security model, architecture
+decision, per-contract impact table, test plan, a full Cleanverse
+dependency table, and a final recommendation.
+
+**Core finding driving the whole design**: no Cleanverse document
+confirms an on-chain query for "is this token actually
+Cleanverse-approved as a CVA" — only the on-chain *behavior* of a CVA
+token (implementing `IATokenPolicy`, responding to `canTransfer`/
+`getRulesV2`) is verifiable by BitV directly. This means
+`BitVRWACollateralRegistry`'s current bare `isCVA` admin-attested bool
+cannot be meaningfully strengthened into a "verified" flag by Solidity
+alone — the specification's two-flag model (`adminAttestedCVA` +
+`onChainInterfaceVerified`) raises the bar (a token must be a real,
+responding contract implementing the right interface) without ever
+claiming to fully solve Cleanverse-approval verification, which remains
+fundamentally an off-chain fact.
+
+**Recommended architecture**: (D) — a new, thin, replaceable
+`BitVCVAAdapter` (owns 100% of the actual Cleanverse-interface-calling
+logic) paired with an additive extension of
+`BitVRWACollateralRegistry`'s existing `isCVA` field into the two-flag
+model above. No other existing contract requires modification — zero
+or additive changes throughout, per instruction.
+
+**Key `UNCONFIRMED` items, not invented around**: `canTransfer`'s
+return type/visibility/mutability; whether a rejected transfer reverts
+or returns `false`; any CVA freeze/revoke mechanism; the CVA
+registration review/approval process; any CVA settlement/recovery/
+redemption/treasury/cross-chain mechanism; CVA events. Full dependency
+table in the specification's §17.
+
+**Not done (per instruction):** no Solidity written, no contracts
+modified, nothing deployed, no Cleanverse functionality invented, no
+addresses/endpoints/signatures/events fabricated.
+
+**Next recommended milestone**: implement `BitVCVAAdapter` and the
+`CVAStatus` extension to `BitVRWACollateralRegistry` per this
+specification — blocked on obtaining full `canTransfer`/`RuleV2`
+policy-interface signatures and the transfer-rejection mechanism from
+Cleanverse directly (specification §18's deployment blockers).
+
+---
+
 ## Milestone 6.2 — RWA collateral registry implementation (Build 06.1)
 
 **Date:** 2026-08-08
