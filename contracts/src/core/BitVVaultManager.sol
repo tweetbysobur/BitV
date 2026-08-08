@@ -11,7 +11,7 @@ import {ComplianceErrors} from "../libraries/ComplianceErrors.sol";
  * and then reverts NotImplemented — no yield strategy logic yet.
  */
 contract BitVVaultManager is BitVComplianceGuard {
-    constructor(address complianceValidator) BitVComplianceGuard(complianceValidator) {}
+    constructor(address complianceValidator, address owner_) BitVComplianceGuard(complianceValidator, owner_) {}
 
     function deposit(address vault, uint256 amount) external {
         _requireCompliance(msg.sender);

@@ -1,15 +1,14 @@
 /**
  * Cleanverse integration boundary — TYPE DEFINITIONS ONLY.
  *
- * These types are intentionally unfilled placeholders. They must not be
- * treated as verified against Cleanverse's official docs until that review
- * happens — see /docs/cleanverse-integration-todo.md for exactly what is
- * still unknown (identity primitives, verified-asset primitives, SDK/API
- * surface, auth model, integration flow).
+ * `RuleV2` is confirmed against the official "CVI Integration Guide V2"
+ * PDF (provided directly by the user). `CleanverseIdentity` /
+ * `CleanverseVerifiedAsset` remain unfilled — see
+ * /docs/cleanverse-integration-todo.md for what's still unknown (identity
+ * lookup API, off-chain SDK, auth model).
  *
  * Do not add fields, methods, or endpoints here speculatively. Every shape
- * in this file must be traceable to an actual Cleanverse doc reference once
- * that review is done.
+ * in this file must be traceable to an actual Cleanverse doc reference.
  */
 
 /** Placeholder for whatever identity credential/attestation Cleanverse issues. */
@@ -21,16 +20,18 @@ export type CleanverseVerifiedAsset = Record<string, never>;
 /**
  * Mirrors the on-chain `IAPassComplianceValidator.RuleV2` struct
  * (contracts/src/interfaces/external/IAPassComplianceValidator.sol) for
- * off-chain/UI reads via viem. Field TYPES here are an engineering
- * assumption, not confirmed from Cleanverse's docs — see that file's
- * header and docs/cleanverse-integration.md.
+ * off-chain/UI reads via viem. Confirmed field types and semantics from
+ * the CVI Integration Guide V2, §3.1: `allowedGroup`/`allowedSubGroup` are
+ * `bytes2` (empty = no restriction), `minTier`/`minSubTier` are `uint8`
+ * (0 = no restriction), `poolCountryBitmap` is a `uint256` bitmap (0 = no
+ * restriction, checked via bitwise AND).
  */
 export interface RuleV2 {
-  allowedGroup: bigint;
-  allowedSubGroup: bigint;
-  minTier: bigint;
-  minSubTier: bigint;
-  poolCountryBitmap: bigint;
+  allowedGroup: `0x${string}`; // bytes2
+  allowedSubGroup: `0x${string}`; // bytes2
+  minTier: number; // uint8
+  minSubTier: number; // uint8
+  poolCountryBitmap: bigint; // uint256
 }
 
 /**

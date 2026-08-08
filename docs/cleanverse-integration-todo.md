@@ -1,89 +1,62 @@
-# Cleanverse Integration — Information Still Required
+# Cleanverse Integration — Remaining Open Items
 
-Per the project's core rule: use the official Cleanverse documentation as
-the source of truth, and do not invent APIs, SDKs, endpoints, contracts, or
-terminology. **This session still could not inspect the official docs
-content** — `https://docs.cleanverse.com/` was located via web search but
-direct fetch is blocked by this sandbox's network egress policy
-(`EGRESS_BLOCKED: docs.cleanverse.com`), confirmed again in Build 01.6
-(retry, and a raw `curl` through the sandbox proxy — both blocked the same
-way) even with an access code supplied for the docs site itself, since the
-block happens at the network layer before any request reaches the site.
-`services/cleanverse/` remains stubs; nothing here has been verified
-against primary source text.
+**Most of this checklist is now resolved.** As of Build 02.1, the user
+provided the two official Cleanverse PDFs directly (`docs.cleanverse.com`
+itself remains network-blocked in every sandbox this project has run
+in — confirmed repeatedly, including via raw `curl`, unaffected by access
+codes since the block is at the network layer):
 
-**Build 02 update:** the task description for Build 02 relayed specific
-details (claimed to come from a "Cleanverse Compliance Protocol
-Integration Guide V2") — the `IAPassComplianceValidator.complianceVerify`
-signature and the `RuleV2` field names/semantics. Those were implemented
-on-chain (`contracts/src/interfaces/external/IAPassComplianceValidator.sol`,
-`contracts/src/compliance/BitVComplianceGuard.sol`) since they're
-concrete and directly actionable, but they are **relayed, not
-independently fetched** — see `docs/cleanverse-integration.md` for the
-full spec and exactly what's still unconfirmed within even that material
-(field types, rule-management functions, deployed address, CVA mechanics,
-off-chain API/SDK, auth, errors, webhooks).
+1. "Cleanverse Compliance Protocol (CCP) Integration Guide (For CVI
+   Compliance Validator) V2" — resolves the `IAPassComplianceValidator`
+   interface, `RuleV2` fields/types/semantics, Single-Contract Mode vs.
+   Factory Mode, and the validator registration API.
+2. "Cleanverse Compliance Protocol (CCP) CVA Integration Guide" —
+   resolves CVA issuance (`IComplianceRule`/`IATokenPolicy`), the CVA
+   Launch/Register APIs, and the "automatic compliance" mechanism.
 
-## What a web search surfaced (UNVERIFIED — do not implement against this)
+See `docs/cleanverse-integration.md` for the full spec built from these.
+The earlier "CVI"/"CVA" terminology that came only from web-search
+snippets is now confirmed correct by these primary sources.
 
-Search result snippets (not the docs themselves) describe Cleanverse as "a
-compliance-native rules layer that interlocks verified identity and
-verified assets on every value transfer," referencing:
+## Still open (genuinely not covered by either PDF)
 
-- **CVI** — "Cleanverse Verified Identity"
-- **CVA** — "Cleanverse Verified Asset"
-- An "API v3" with a sandbox environment separate from production credentials
+1. **CVI issuance/verification flow** — how a wallet actually obtains a
+   CVI (the user-facing KYC flow) isn't in either guide; both start from
+   "the user already has a CVI."
+2. **CVI expiration/revocation behavior** — not specified.
+3. **Off-chain identity-status lookup API** — no endpoint for "does this
+   address have a CVI, and what's its current group/tier" was given;
+   only the on-chain `complianceVerify` (yes/no against a specific pool's
+   rules) is confirmed.
+4. **Validator's deployed address on Monad Testnet** — not given. BitV
+   cannot register a contract or call `complianceVerify` for real without
+   this.
+5. **Full endpoint paths** for: Query Apply Status API, Query Supported
+   CVA List, Add CVA Rule API — referenced by name only in the CVA guide,
+   no path given.
+6. **`api-id` / API key provisioning process** — how BitV would actually
+   obtain Cleanverse API credentials isn't described.
+7. **AES/CBC/PKCS5Padding key management detail** for the Launch CVA API
+   (key source, IV handling) — the algorithm is named, implementation
+   detail isn't.
+8. **Validator/CVA events** — neither guide lists emitted events.
+9. **Pause/freeze function signatures** — the CVI guide's overview
+   mentions the validator can "pause pools or freeze accounts (emergency
+   risk control)," but §3.2's interface list doesn't include those
+   functions' signatures.
 
-These terms are plausible but **unconfirmed** — they come from search-result
-summaries, not a fetched page, so exact field names, endpoint paths, and
-semantics are unknown. Do not use "CVI"/"CVA" in code or types until this is
-confirmed directly from `docs.cleanverse.com`.
+None of the above block Build 02's compliance-architecture milestone
+(all covered functionality is implemented). They block: (a) actually
+registering a BitV contract with a real validator, (b) building any
+identity-status UI beyond static states, (c) BitV ever issuing its own
+CVA token.
 
-## Exact checklist — required before implementation
+## Terminology (confirmed, not to be second-guessed)
 
-1. **Identity primitive** — What object does Cleanverse actually issue for
-   verified identity (is "CVI" the real term)? What does it contain?
-2. **Verified asset primitive** — What is the real "verified asset" object
-   (is "CVA" the real term)? How does it attach to an address/identity?
-3. **Authentication method** — API key, signed request, OAuth, on-chain
-   attestation check — the literal mechanism, header names, token format.
-4. **API / SDK** — Is there an official TypeScript/JS SDK (package name,
-   registry), a REST API (base URL, versioning — "v3" per search result is
-   unconfirmed), a subgraph, or on-chain contracts to read directly?
-5. **Required endpoints** — Exact paths/methods needed for: checking a
-   user's identity verification status, checking asset verification status,
-   initiating verification (if BitV triggers it vs. reading existing state).
-6. **Request format** — Payload shape, required headers, content type.
-7. **Response format** — Success and error payload shapes, status codes.
-8. **Verification flow (identity)** — Literal step-by-step: what does a BitV
-   user do, what does BitV call, what does Cleanverse return, in what order.
-9. **Verification flow (assets)** — Same, for verified-asset attestation.
-10. **Network requirements** — Is this an HTTP API call from a backend only,
-    or does it also require an on-chain read/write on a specific network?
-    Sandbox vs. production environment endpoints/hostnames.
-11. **Environment variables** — Exact names Cleanverse's SDK/API expects
-    (current `.env.example` placeholders `CLEANVERSE_API_KEY` /
-    `CLEANVERSE_API_BASE_URL` are BitV-side guesses, not confirmed
-    Cleanverse variable names).
-12. **Error states** — What errors/status codes Cleanverse returns for
-    unverified identity, unverified asset, expired verification, rate
-    limits, invalid auth, etc., so BitV can model them without inventing
-    behavior.
-13. **Webhook / event requirements** — Does Cleanverse push
-    verification-status changes via webhook, or is it poll/read-only from
-    BitV's side? If webhooks exist: payload shape, signature verification
-    method, retry semantics.
-
-## Terminology mapping
-
-Once confirmed, preserve Cleanverse's official terms in implementation code
-(types, function names, code comments) while keeping BitV's product
-language ("BitScore," "identity-gated," etc.) in user-facing copy — per the
-project's core instruction not to invent or blur Cleanverse's own
-terminology.
-
-`services/cleanverse/types.ts` and `services/cleanverse/client.ts` stay
-non-functional (identity/asset placeholder types, a `RuleV2` TS mirror of
-the on-chain struct, and throwing client methods) until this checklist is
-resolved with citations to the actual fetched documentation, not search
-summaries or task-relayed descriptions.
+- **CVI** = Cleanverse Verified Identity (identity primitive)
+- **CVA** = Cleanverse Verified Asset (compliant-token primitive, separate
+  contract/interface from the CVI validator)
+- **RuleV2** = the compliance policy struct shared by both systems
+- **BitScore** = BitV's own risk layer, explicitly not a Cleanverse term
+  or primitive — keep it out of any code/types that mirror Cleanverse's
+  interfaces.

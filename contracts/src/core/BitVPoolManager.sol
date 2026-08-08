@@ -11,7 +11,7 @@ import {ComplianceErrors} from "../libraries/ComplianceErrors.sol";
  * and then reverts NotImplemented — no accounting/economics yet.
  */
 contract BitVPoolManager is BitVComplianceGuard {
-    constructor(address complianceValidator) BitVComplianceGuard(complianceValidator) {}
+    constructor(address complianceValidator, address owner_) BitVComplianceGuard(complianceValidator, owner_) {}
 
     function addLiquidity(address asset, uint256 amount) external {
         _requireCompliance(msg.sender);

@@ -15,19 +15,21 @@ contract BitVComplianceGuardTest is Test {
     MockComplianceValidator internal validator;
     BitVPoolManager internal pool;
 
+    address internal owner = makeAddr("owner");
     address internal verifiedUser = makeAddr("verifiedUser");
     address internal unverifiedUser = makeAddr("unverifiedUser");
 
-    uint256 internal constant GROUP_RETAIL = 1;
-    uint256 internal constant SUBGROUP_STANDARD = 1;
-    uint256 internal constant TIER_2 = 2;
-    uint256 internal constant SUBTIER_1 = 1;
+    bytes2 internal constant GROUP_RETAIL = bytes2("rt");
+    bytes2 internal constant GROUP_INSTITUTIONAL = bytes2("in");
+    bytes2 internal constant SUBGROUP_STANDARD = bytes2("st");
+    uint8 internal constant TIER_2 = 2;
+    uint8 internal constant SUBTIER_1 = 1;
     uint256 internal constant COUNTRY_US = 1 << 0;
     uint256 internal constant COUNTRY_RESTRICTED = 1 << 5;
 
     function setUp() public {
         validator = new MockComplianceValidator();
-        pool = new BitVPoolManager(address(validator));
+        pool = new BitVPoolManager(address(validator), owner);
     }
 
     function _baseRule() internal pure returns (IAPassComplianceValidator.RuleV2 memory) {
@@ -50,12 +52,13 @@ contract BitVComplianceGuardTest is Test {
         assertTrue(validator.complianceVerify(address(pool), verifiedUser));
     }
 
-    /// 2. Unverified user is rejected (no rules ever satisfied).
+    /// 2. Unverified user is rejected (no CVI ever set, doesn't satisfy
+    /// the restricted rule below).
     function test_UnverifiedUserIsRejected() public {
         IAPassComplianceValidator.RuleV2[] memory rules = new IAPassComplianceValidator.RuleV2[](1);
         rules[0] = _baseRule();
         validator.setRules(address(pool), rules);
-        // unverifiedUser has all-zero state — never configured.
+        // unverifiedUser has all-zero CVI — never configured.
 
         assertFalse(validator.complianceVerify(address(pool), unverifiedUser));
     }
@@ -65,7 +68,7 @@ contract BitVComplianceGuardTest is Test {
         IAPassComplianceValidator.RuleV2[] memory rules = new IAPassComplianceValidator.RuleV2[](1);
         rules[0] = _baseRule();
         validator.setRules(address(pool), rules);
-        validator.setUser(verifiedUser, GROUP_RETAIL + 1, SUBGROUP_STANDARD, TIER_2, SUBTIER_1, COUNTRY_US);
+        validator.setUser(verifiedUser, GROUP_INSTITUTIONAL, SUBGROUP_STANDARD, TIER_2, SUBTIER_1, COUNTRY_US);
 
         assertFalse(validator.complianceVerify(address(pool), verifiedUser));
     }
@@ -112,7 +115,7 @@ contract BitVComplianceGuardTest is Test {
         IAPassComplianceValidator.RuleV2[] memory rules = new IAPassComplianceValidator.RuleV2[](2);
         rules[0] = _baseRule(); // requires GROUP_RETAIL / TIER_2 / COUNTRY_US
         rules[1] = IAPassComplianceValidator.RuleV2({
-            allowedGroup: GROUP_RETAIL + 1,
+            allowedGroup: GROUP_INSTITUTIONAL,
             allowedSubGroup: SUBGROUP_STANDARD,
             minTier: 1,
             minSubTier: 0,
@@ -121,7 +124,7 @@ contract BitVComplianceGuardTest is Test {
         validator.setRules(address(pool), rules);
 
         // Satisfies rule[1] only.
-        validator.setUser(verifiedUser, GROUP_RETAIL + 1, SUBGROUP_STANDARD, 1, 0, COUNTRY_RESTRICTED);
+        validator.setUser(verifiedUser, GROUP_INSTITUTIONAL, SUBGROUP_STANDARD, 1, 0, COUNTRY_RESTRICTED);
         assertTrue(validator.complianceVerify(address(pool), verifiedUser));
     }
 
@@ -158,6 +161,22 @@ contract BitVComplianceGuardTest is Test {
         assertEq(address(pool.COMPLIANCE_VALIDATOR()), address(validator));
 
         vm.expectRevert(ComplianceErrors.ZeroValidatorAddress.selector);
-        new BitVPoolManager(address(0));
+        new BitVPoolManager(address(0), owner);
+    }
+
+    /// Rule-management wrappers (guide §5.2/§6) are owner-gated.
+    function test_RuleManagementIsOwnerGated() public {
+        IAPassComplianceValidator.RuleV2 memory rule = _baseRule();
+
+        vm.expectRevert();
+        vm.prank(unverifiedUser);
+        pool.setRuleV2FromContract(rule);
+
+        vm.prank(owner);
+        pool.setRuleV2FromContract(rule);
+
+        IAPassComplianceValidator.RuleV2[] memory stored = pool.getRulesV2();
+        assertEq(stored.length, 1);
+        assertEq(stored[0].allowedGroup, GROUP_RETAIL);
     }
 }

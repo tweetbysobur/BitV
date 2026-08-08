@@ -12,7 +12,7 @@ import {ComplianceErrors} from "../libraries/ComplianceErrors.sol";
  * interest/liquidation economics yet.
  */
 contract BitVLendingManager is BitVComplianceGuard {
-    constructor(address complianceValidator) BitVComplianceGuard(complianceValidator) {}
+    constructor(address complianceValidator, address owner_) BitVComplianceGuard(complianceValidator, owner_) {}
 
     function supply(address asset, uint256 amount) external {
         _requireCompliance(msg.sender);

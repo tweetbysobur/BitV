@@ -4,6 +4,82 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 2.1 — Cleanverse compliance foundation, corrected against real docs (Build 02.1)
+
+**Date:** 2026-08-08
+
+**Context:** The user provided the two official Cleanverse PDFs directly
+("CVI Integration Guide V2" and "CVA Integration Guide") — the first real
+primary-source access this project has had, after multiple sessions where
+`docs.cleanverse.com` was network-blocked. This let Build 02's
+implementation be checked against ground truth, and it was wrong in one
+concrete way: `RuleV2`'s field types.
+
+**Corrections made:**
+
+- `contracts/src/interfaces/external/IAPassComplianceValidator.sol` —
+  `RuleV2` field types fixed from an all-`uint256` guess to the confirmed
+  `bytes2 allowedGroup, bytes2 allowedSubGroup, uint8 minTier, uint8
+  minSubTier, uint256 poolCountryBitmap`. Added the full confirmed
+  interface: `registerV2`, `registerApass` (2 overloads),
+  `setRuleV2FromRegistrar`, `isRegistered` (registration side,
+  `REGISTER_ROLE`), and `setRuleV2FromContract` / `addRuleV2FromContract`
+  / `removeRuleV2FromContract` / `getRulesV2` (business-contract side) —
+  none of which existed in Build 02's interface, which only declared
+  `complianceVerify`.
+- `contracts/src/compliance/BitVComplianceGuard.sol` — now inherits
+  `Ownable` (per the guide's Single-Contract-Mode template) and exposes
+  the four rule-management functions as `onlyOwner`-gated wrappers, per
+  the guide's explicit instruction to gate them with `onlyOwner` or
+  `AccessControl`. Constructor now takes `(validator, owner)`.
+- `BitVPoolManager` / `BitVLendingManager` / `BitVVaultManager`
+  constructors updated to pass an owner through.
+- `contracts/test/mocks/MockComplianceValidator.sol` and
+  `contracts/test/unit/BitVComplianceGuard.t.sol` — reworked for the
+  corrected field types (`bytes2` group/sub-group test constants, `uint8`
+  tiers) and corrected "no restriction" semantics (empty/zero fields on a
+  `RuleV2` mean unrestricted, not "must equal zero" — Build 02's mock had
+  exact-match-only comparisons). Added a test for the new owner-gated
+  rule-management wrappers.
+- `services/cleanverse/types.ts` — `RuleV2` TS mirror field types
+  corrected to match (`0x${string}` for the two `bytes2` fields, `number`
+  for the `uint8` fields, `bigint` for the bitmap).
+- `docs/cleanverse-integration.md` — substantially rewritten from the
+  actual PDF content: full confirmed API endpoint table (§5), the
+  distinction between the CVI validator and the separate CVA
+  `IComplianceRule`/`IATokenPolicy` interface (§3), Single-Contract Mode
+  vs. Factory Mode with the guide's own verbatim comparison table (§12),
+  and the confirmed authentication schemes (§4). `docs/cleanverse-
+  integration-todo.md` rewritten to list only what's genuinely still
+  unconfirmed (9 items — CVI issuance flow, validator's deployed address,
+  a few unnamed endpoint paths, etc.), not everything.
+
+**Verification:**
+
+- Every contract, the mock, and the test file re-verified to compile
+  clean via `solc@0.8.24` (Foundry still not installed/available in this
+  sandbox — same limitation as prior milestones; `forge test` still not
+  executed).
+- Frontend `npm run build` / `lint` / `typecheck` re-run after the
+  `RuleV2` TS type change — all still **PASS**.
+
+**Remaining before real deployment:** the 9 items in the rewritten
+`docs/cleanverse-integration-todo.md` — most notably the validator's
+actual deployed address on Monad Testnet (BitV cannot register a contract
+or get a meaningful `complianceVerify` answer without it) and the CVI
+issuance/verification flow (needed before any identity-status UI beyond
+static placeholder states).
+
+**Next recommended milestone:** get Foundry running somewhere to actually
+execute `contracts/test/unit/BitVComplianceGuard.t.sol` against the
+corrected interface; separately, if/when the validator's Monad Testnet
+address becomes available, wire up `services/cleanverse/client.ts`'s
+`checkCompliance` to actually read it via viem. Economic logic (pool
+accounting, lending interest, vault strategies, BitScore) stays out of
+scope until then.
+
+---
+
 ## Milestone 2 — Cleanverse compliance foundation (BUILD 02)
 
 **Date:** 2026-08-08
