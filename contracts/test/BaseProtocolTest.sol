@@ -6,6 +6,7 @@ import {BitVAccessManager} from "../src/core/BitVAccessManager.sol";
 import {BitVTreasury} from "../src/core/BitVTreasury.sol";
 import {BitVPoolManager} from "../src/core/BitVPoolManager.sol";
 import {BitVLendingManager} from "../src/core/BitVLendingManager.sol";
+import {BitScoreManager} from "../src/core/BitScoreManager.sol";
 import {StaticPriceOracle} from "../src/oracles/StaticPriceOracle.sol";
 import {KinkedInterestRateModel} from "../src/oracles/KinkedInterestRateModel.sol";
 import {MockComplianceValidator} from "./mocks/MockComplianceValidator.sol";
@@ -22,6 +23,7 @@ abstract contract BaseProtocolTest is Test {
     MockComplianceValidator internal validator;
     BitVPoolManager internal poolManager;
     BitVLendingManager internal lendingManager;
+    BitScoreManager internal bitScoreManager;
     StaticPriceOracle internal oracle;
     KinkedInterestRateModel internal rateModel;
 
@@ -69,6 +71,7 @@ abstract contract BaseProtocolTest is Test {
             address(debtAsset),
             BitVPoolManager.PoolConfigParams({
                 ltvBps: 0,
+                maxLtvWithScoreBps: 0,
                 liquidationThresholdBps: 0,
                 liquidationBonusBps: 0,
                 reserveFactorBps: 1_000, // 10% of interest to treasury
@@ -83,7 +86,8 @@ abstract contract BaseProtocolTest is Test {
         poolManager.createPool(
             address(collateralAsset),
             BitVPoolManager.PoolConfigParams({
-                ltvBps: 7_000, // 70%
+                ltvBps: 7_000, // 70% base LTV
+                maxLtvWithScoreBps: 7_800, // 78% absolute BitScore ceiling, still under the 80% threshold
                 liquidationThresholdBps: 8_000, // 80%
                 liquidationBonusBps: 500, // +5%
                 reserveFactorBps: 0,
@@ -96,6 +100,12 @@ abstract contract BaseProtocolTest is Test {
             })
         );
         poolManager.setLendingManager(address(lendingManager));
+        vm.stopPrank();
+
+        bitScoreManager = new BitScoreManager(address(accessManager));
+        vm.startPrank(admin);
+        bitScoreManager.setLendingManager(address(lendingManager));
+        lendingManager.setBitScoreManager(address(bitScoreManager));
         vm.stopPrank();
 
         // Grant every actor the same permissive CVI rule by default so

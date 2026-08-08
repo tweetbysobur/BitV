@@ -83,4 +83,76 @@ contract BitVInvariantTest is BaseProtocolTest {
         poolManager.deposit(address(debtAsset), 1e18);
         vm.stopPrank();
     }
+
+    // ── BitScore invariants (Build 04) ──────────────────────────────────
+    // The handler's fuzzed deposit/withdraw/depositCollateral/borrow/
+    // repay actions already drive BitScoreManager under the hood (it's
+    // wired by default in BaseProtocolTest), so no separate BitScore-
+    // specific handler actions are needed — these invariants check
+    // BitScoreManager's own guarantees hold after whatever sequence of
+    // real lending activity the fuzzer produced.
+
+    /// Score never exceeds the documented maximum, for every actor,
+    /// after any sequence of fuzzed activity.
+    function invariant_ScoreNeverExceedsMax() public view {
+        assertLe(bitScoreManager.getScore(supplier), 1000);
+        assertLe(bitScoreManager.getScore(borrower), 1000);
+        assertLe(bitScoreManager.getScore(liquidator), 1000);
+    }
+
+    /// Score never falls below the documented minimum. Trivially true
+    /// for a uint16 return value, but asserted explicitly (`>= 0` is
+    /// always true for an unsigned type) to document the intent and
+    /// catch a future refactor that widens the type incorrectly.
+    function invariant_ScoreNeverBelowMin() public view {
+        assertGe(uint256(bitScoreManager.getScore(supplier)), 0);
+        assertGe(uint256(bitScoreManager.getScore(borrower)), 0);
+        assertGe(uint256(bitScoreManager.getScore(liquidator)), 0);
+    }
+
+    /// Unauthorized users cannot increase their own (or anyone else's)
+    /// score: only the registered lendingManager may call `record*`.
+    function invariant_UnauthorizedCallerCannotIncreaseScore() public {
+        uint16 before = bitScoreManager.getScore(borrower);
+        vm.prank(borrower); // not the registered lendingManager
+        vm.expectRevert();
+        bitScoreManager.recordRepayment(borrower, true, 999 days);
+        assertEq(bitScoreManager.getScore(borrower), before);
+    }
+
+    /// BitScore's LTV adjustment can never push a user's effective
+    /// available-borrow-value above the asset-configured
+    /// maxLtvWithScoreBps ceiling, for whatever collateral/debt state
+    /// the fuzzer has produced — the same defense-in-depth clamp
+    /// `_effectiveAvailableBorrowValue` applies is re-checked here
+    /// independently, not just trusted by construction.
+    function invariant_ScoreCannotExceedConfiguredLtvCeiling() public view {
+        address[3] memory actors = [supplier, borrower, liquidator];
+        for (uint256 i = 0; i < actors.length; i++) {
+            uint256 effective = lendingManager.getEffectiveAvailableBorrowValue(actors[i]);
+            uint256 weightedMax = lendingManager.getUserAccountData(actors[i]).weightedMaxLtvValue;
+            uint256 debtValue = lendingManager.getUserAccountData(actors[i]).totalDebtValue;
+            uint256 ceiling = weightedMax > debtValue ? weightedMax - debtValue : 0;
+            assertLe(effective, ceiling);
+        }
+    }
+
+    /// If BitScore is disabled mid-run, every actor's effective
+    /// available-borrow-value must exactly equal the base
+    /// (score-independent) figure — never something more favorable, per
+    /// the fail-safe requirement in docs/bitscore-specification.md §12.
+    function invariant_BitScoreFailureNeverMoreFavorableThanBase() public {
+        vm.prank(admin);
+        lendingManager.setBitScoreManager(address(0));
+
+        address[3] memory actors = [supplier, borrower, liquidator];
+        for (uint256 i = 0; i < actors.length; i++) {
+            uint256 base = lendingManager.getUserAccountData(actors[i]).availableBorrowValue;
+            uint256 effective = lendingManager.getEffectiveAvailableBorrowValue(actors[i]);
+            assertEq(effective, base);
+        }
+
+        vm.prank(admin);
+        lendingManager.setBitScoreManager(address(bitScoreManager));
+    }
 }

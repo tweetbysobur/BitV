@@ -1,8 +1,27 @@
 # BitScore Specification (Build 04)
 
-**Status: design only.** No Solidity in this milestone. Nothing here is
-implemented, deployed, or binding until reviewed — this document is the
-thing to review.
+**Status: implemented and tested (Build 04, second half).** This
+document is the original design spec, reviewed and approved before any
+Solidity was written. See `docs/bitscore-implementation.md` for what was
+actually built, including two deliberate, documented deviations found
+necessary during implementation:
+
+1. **Decay model consolidated** to a single accumulator/window instead
+   of per-input-category windows (tractability simplification — point
+   values and the overall cap are preserved).
+2. **Interest rate adjustment is quoted/informational only**, not wired
+   into real per-user accrual — `BitVPoolManager`'s shared borrow index
+   makes a genuine per-user rate architecturally incompatible without a
+   much larger redesign, which this milestone was not scoped to do. This
+   is the one place implementation revealed a direct contradiction with
+   this document's Section 7 table, and it was resolved rather than
+   forced through or silently ignored.
+
+Everything else in this document — score range, tiers, LTV adjustment
+mechanics, anti-gaming caps, privacy model, fail-safe behavior,
+CVI/BitScore separation — was implemented as specified and is covered by
+21 dedicated tests plus 5 BitScore-specific fuzzed invariants, all
+passing under Foundry.
 
 ## 1. Purpose
 

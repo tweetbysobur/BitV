@@ -14,6 +14,7 @@ import {WadRayMath} from "../libraries/WadRayMath.sol";
 import {PercentageMath} from "../libraries/PercentageMath.sol";
 import {ProtocolErrors} from "../libraries/ProtocolErrors.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
+import {IBitScoreManager} from "../interfaces/IBitScoreManager.sol";
 
 /**
  * @title BitVLendingManager
@@ -46,8 +47,16 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
     BitVPoolManager public immutable POOL_MANAGER;
     address public immutable TREASURY;
 
+    /// @notice Optional (Build 04). address(0) = BitScore disabled —
+    /// every lending action falls back to base, score-independent
+    /// parameters, per docs/bitscore-specification.md §12's fail-safe
+    /// requirement. Never required for CVI compliance, which remains
+    /// mandatory and unaffected regardless of this being set.
+    IBitScoreManager public bitScoreManager;
+
     mapping(address user => mapping(address asset => uint256)) private _collateralBalance;
     mapping(address user => mapping(address asset => uint256)) private _scaledDebt;
+    mapping(address user => mapping(address asset => uint40)) private _debtOpenedTimestamp;
     mapping(address user => EnumerableSet.AddressSet) private _userCollateralAssets;
     mapping(address user => EnumerableSet.AddressSet) private _userDebtAssets;
 
@@ -64,6 +73,8 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         uint256 seizedCollateral
     );
     event CloseFactorUpdated(uint16 closeFactorBps);
+    event BitScoreManagerSet(address indexed bitScoreManager);
+    event BitScoreUpdateFailed(address indexed user, bytes32 indexed action);
 
     constructor(
         address complianceValidator,
@@ -81,6 +92,15 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         if (bps == 0 || bps > 10_000) revert ProtocolErrors.InvalidRiskParams();
         closeFactorBps = bps;
         emit CloseFactorUpdated(bps);
+    }
+
+    /// @notice Wires BitScore into lending. Pass address(0) to disable
+    /// (fall back to base parameters for everyone) — never required for
+    /// the protocol to function, since CVI compliance is the only hard
+    /// eligibility gate.
+    function setBitScoreManager(address bitScoreManager_) external onlyRole(ACCESS_MANAGER.PROTOCOL_ADMIN_ROLE()) {
+        bitScoreManager = IBitScoreManager(bitScoreManager_);
+        emit BitScoreManagerSet(bitScoreManager_);
     }
 
     // ── Collateral ───────────────────────────────────────────────────────
@@ -120,6 +140,7 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         }
 
         IERC20(asset).safeTransfer(msg.sender, amount);
+        _recordUtilizationSnapshot(msg.sender, data);
 
         emit CollateralWithdrawn(msg.sender, asset, amount);
     }
@@ -140,8 +161,13 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
 
         DataTypes.AccountData memory data = _accountData(msg.sender);
         uint256 borrowValue = _valueOf(asset, amount, pool.priceOracle);
-        if (borrowValue > data.availableBorrowValue) {
-            revert ProtocolErrors.InsufficientCollateral(borrowValue, data.availableBorrowValue);
+        uint256 effectiveAvailable = _effectiveAvailableBorrowValue(msg.sender, data);
+        if (borrowValue > effectiveAvailable) {
+            revert ProtocolErrors.InsufficientCollateral(borrowValue, effectiveAvailable);
+        }
+
+        if (_scaledDebt[msg.sender][asset] == 0) {
+            _debtOpenedTimestamp[msg.sender][asset] = uint40(block.timestamp);
         }
 
         uint256 scaledAmount = POOL_MANAGER.borrowFromPool(asset, amount, msg.sender);
@@ -159,15 +185,48 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         uint256 currentDebt = _currentDebt(msg.sender, asset);
         if (currentDebt == 0) revert ProtocolErrors.NoOutstandingDebt(asset);
 
-        repaid = amount > currentDebt ? currentDebt : amount;
+        // Build 04: support `amount == type(uint256).max` as "repay my
+        // exact current debt," mirroring the existing pattern in
+        // BitVPoolManager.withdraw(). Interest accrues between a caller
+        // reading `getCurrentDebt()` off-chain and their `repay()`
+        // transaction landing, so a pre-computed "repay everything"
+        // amount is routinely a few wei short of the real current debt
+        // by the time this executes — without this sentinel, an
+        // intended full close almost never lands as an *exact* full
+        // close, which matters here because BitScore's repayment
+        // scoring depends on detecting a true full close (see
+        // `wasFullClose` below).
+        repaid = amount == type(uint256).max ? currentDebt : (amount > currentDebt ? currentDebt : amount);
 
-        uint256 scaledRepay = repaid.rayDiv(POOL_MANAGER.getBorrowIndex(asset));
+        // `repaid == currentDebt` is the exact signal for a
+        // full close. Deriving it instead from
+        // `rayDiv(repaid, index) >= scaledDebt` is unreliable —
+        // rayMul/rayDiv both round to nearest independently, so
+        // rayDiv(rayMul(scaledDebt, index), index) is not guaranteed to
+        // land back at exactly `scaledDebt`; it can come out 1 wei low,
+        // which silently left 1 wei of scaled debt behind on every
+        // "full" repayment (position never actually reached zero debt,
+        // `_userDebtAssets` was never cleared, and BitScore's
+        // `wasFullClose` — which depends on this — was never true).
+        // Forcing the scaled balance to exactly zero on an exact-amount
+        // full close removes the dust instead of leaving it to compound
+        // as a latent accounting error.
+        bool wasFullClose = repaid == currentDebt;
         uint256 scaledDebt = _scaledDebt[msg.sender][asset];
-        _scaledDebt[msg.sender][asset] = scaledRepay >= scaledDebt ? 0 : scaledDebt - scaledRepay;
-        if (_scaledDebt[msg.sender][asset] == 0) _userDebtAssets[msg.sender].remove(asset);
+        if (wasFullClose) {
+            _scaledDebt[msg.sender][asset] = 0;
+            _userDebtAssets[msg.sender].remove(asset);
+        } else {
+            uint256 scaledRepay = repaid.rayDiv(POOL_MANAGER.getBorrowIndex(asset));
+            _scaledDebt[msg.sender][asset] = scaledRepay >= scaledDebt ? 0 : scaledDebt - scaledRepay;
+        }
+
+        uint256 positionDuration = block.timestamp - uint256(_debtOpenedTimestamp[msg.sender][asset]);
+        if (wasFullClose) _debtOpenedTimestamp[msg.sender][asset] = 0;
 
         IERC20(asset).safeTransferFrom(msg.sender, address(POOL_MANAGER), repaid);
         POOL_MANAGER.repayToPool(asset, repaid);
+        _recordRepayment(msg.sender, wasFullClose, positionDuration);
 
         emit Repaid(msg.sender, asset, repaid);
     }
@@ -203,8 +262,12 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         uint256 seizeValue = repayValue.percentMul(10_000 + collateralPool.liquidationBonusBps);
         uint256 seizeAmount = _amountFromValue(collateralAsset, seizeValue, collateralPool.priceOracle);
 
+        uint256 originalDebt = currentDebt;
+        bool wasBadDebt = false;
+
         uint256 userCollateral = _collateralBalance[user][collateralAsset];
         if (seizeAmount > userCollateral) {
+            wasBadDebt = true;
             // Insolvent position: cap seizure at what's actually there and
             // scale the repay down proportionally, so the liquidator never
             // pays more than the collateral they receive is worth. This
@@ -232,6 +295,9 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         POOL_MANAGER.repayToPool(debtAsset, actualRepay);
         IERC20(collateralAsset).safeTransfer(msg.sender, seizeAmount);
 
+        bool wasPartial = actualRepay < originalDebt;
+        _recordLiquidation(user, wasBadDebt, wasPartial);
+
         emit Liquidated(user, msg.sender, debtAsset, collateralAsset, actualRepay, seizeAmount);
     }
 
@@ -253,7 +319,88 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         return _accountData(user).healthFactorRay;
     }
 
+    /// @notice Base-vs-BitScore-adjusted available borrow value, exposed
+    /// for tests/UI without needing to call `borrow`. Same fail-safe
+    /// fallback logic as `borrow` itself.
+    function getEffectiveAvailableBorrowValue(address user) external view returns (uint256) {
+        return _effectiveAvailableBorrowValue(user, _accountData(user));
+    }
+
+    /// @notice Quoted (not applied) interest discount for `user`'s
+    /// current tier — see IBitScoreManager.getBaseRateDiscountRay's
+    /// NatSpec for why this is informational only.
+    function getQuotedBaseRateDiscountRay(address user) external view returns (uint256) {
+        if (address(bitScoreManager) == address(0)) return 0;
+        try bitScoreManager.getBaseRateDiscountRay(user) returns (uint256 discount) {
+            return discount;
+        } catch {
+            return 0;
+        }
+    }
+
     // ── Internal accounting ──────────────────────────────────────────────
+
+    /// @dev Build 04 integration point. Falls back to `data.availableBorrowValue`
+    /// (the base, score-independent, ltvBps-weighted hard limit) whenever
+    /// BitScore is disabled or its call fails for any reason — per
+    /// docs/bitscore-specification.md §12, never toward a more favorable
+    /// result than what a failure-free base calculation would give.
+    function _effectiveAvailableBorrowValue(address user, DataTypes.AccountData memory data)
+        internal
+        view
+        returns (uint256)
+    {
+        if (address(bitScoreManager) == address(0)) return data.availableBorrowValue;
+
+        uint256 maxAvailable =
+            data.weightedMaxLtvValue > data.totalDebtValue ? data.weightedMaxLtvValue - data.totalDebtValue : 0;
+
+        try bitScoreManager.getAdjustedAvailableBorrowValue(
+            user, data.availableBorrowValue, maxAvailable, data.totalDebtValue, data.totalCollateralValue
+        ) returns (uint256 adjusted) {
+            // Defense in depth: even a correctly-implemented BitScoreManager
+            // is never trusted to exceed the caller-computed ceiling —
+            // this is the "score cannot bypass hard protocol limits"
+            // guarantee enforced at the call site, not just by convention.
+            return adjusted > maxAvailable ? maxAvailable : adjusted;
+        } catch {
+            return data.availableBorrowValue;
+        }
+    }
+
+    function _recordRepayment(address user, bool wasFullClose, uint256 positionDuration) internal {
+        if (address(bitScoreManager) == address(0)) return;
+        try bitScoreManager.recordRepayment(user, wasFullClose, positionDuration) {}
+        catch {
+            emit BitScoreUpdateFailed(user, "repayment");
+        }
+    }
+
+    function _recordLiquidation(address user, bool wasBadDebt, bool wasPartial) internal {
+        if (address(bitScoreManager) == address(0)) return;
+        try bitScoreManager.recordLiquidation(user, wasBadDebt, wasPartial) {}
+        catch {
+            emit BitScoreUpdateFailed(user, "liquidation");
+        }
+    }
+
+    function _recordUtilizationSnapshot(address user, DataTypes.AccountData memory data) internal {
+        if (address(bitScoreManager) == address(0)) return;
+        uint16 utilizationBps = data.totalCollateralValue == 0
+            ? 0
+            : uint16(_min(data.totalDebtValue * 10_000 / data.totalCollateralValue, 10_000));
+        uint16 healthFactorBps = data.healthFactorRay == type(uint256).max
+            ? type(uint16).max
+            : uint16(_min(data.healthFactorRay / 1e23, type(uint16).max)); // ray (1e27) -> bps-of-1x (1e4) scale
+        try bitScoreManager.recordUtilizationSnapshot(user, utilizationBps, healthFactorBps) {}
+        catch {
+            emit BitScoreUpdateFailed(user, "utilization_snapshot");
+        }
+    }
+
+    function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
+    }
 
     function _accrueAllUserAssets(address user) internal {
         address[] memory debtAssets = _userDebtAssets[user].values();
@@ -278,6 +425,7 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         address[] memory collateralAssets = _userCollateralAssets[user].values();
         uint256 totalCollateralValue;
         uint256 weightedLtvValue;
+        uint256 weightedMaxLtvValue;
         uint256 weightedLiqThresholdValue;
 
         for (uint256 i = 0; i < collateralAssets.length; i++) {
@@ -293,6 +441,7 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
 
             totalCollateralValue += value;
             weightedLtvValue += value.percentMul(pool.ltvBps);
+            weightedMaxLtvValue += value.percentMul(pool.maxLtvWithScoreBps);
             weightedLiqThresholdValue += value.percentMul(pool.liquidationThresholdBps);
         }
 
@@ -316,6 +465,7 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         data.totalCollateralValue = totalCollateralValue;
         data.totalDebtValue = totalDebtValue;
         data.availableBorrowValue = weightedLtvValue > totalDebtValue ? weightedLtvValue - totalDebtValue : 0;
+        data.weightedMaxLtvValue = weightedMaxLtvValue;
         data.currentLiquidationThresholdBps =
             totalCollateralValue == 0 ? 0 : (weightedLiqThresholdValue * 10_000) / totalCollateralValue;
         data.healthFactorRay =

@@ -152,6 +152,7 @@ contract BitVPoolManagerTest is BaseProtocolTest {
             address(0xCAFE),
             BitVPoolManager.PoolConfigParams({
                 ltvBps: 0,
+                maxLtvWithScoreBps: 0,
                 liquidationThresholdBps: 0,
                 liquidationBonusBps: 0,
                 reserveFactorBps: 0,
@@ -176,6 +177,7 @@ contract BitVPoolManagerTest is BaseProtocolTest {
             address(evilToken),
             BitVPoolManager.PoolConfigParams({
                 ltvBps: 0,
+                maxLtvWithScoreBps: 0,
                 liquidationThresholdBps: 0,
                 liquidationBonusBps: 0,
                 reserveFactorBps: 0,

@@ -16,7 +16,12 @@ library DataTypes {
         bool isPaused; // emergency-paused: deposits/withdrawals/borrows blocked
         bool isBorrowingEnabled;
         bool isCollateralEnabled;
-        uint16 ltvBps; // max loan-to-value when used as collateral
+        uint16 ltvBps; // max loan-to-value when used as collateral (base, score-independent)
+        uint16 maxLtvWithScoreBps; // absolute LTV ceiling BitScore may ever raise a user to for
+            // this asset (Build 04) — must satisfy ltvBps <= maxLtvWithScoreBps <=
+            // liquidationThresholdBps; equals ltvBps (i.e. no BitScore bonus possible) unless
+            // RISK_MANAGER_ROLE explicitly configures headroom above it. This is BitV's own
+            // configured ceiling, not a Cleanverse value.
         uint16 liquidationThresholdBps; // health-factor-1.0 boundary
         uint16 liquidationBonusBps; // extra collateral seized by liquidators, on top of 100%
         uint16 reserveFactorBps; // share of accrued interest routed to BitVTreasury
@@ -36,7 +41,8 @@ library DataTypes {
     struct AccountData {
         uint256 totalCollateralValue; // in the oracle's shared price unit
         uint256 totalDebtValue;
-        uint256 availableBorrowValue;
+        uint256 availableBorrowValue; // base, ltvBps-weighted — the hard-limit fallback BitScore may never exceed
+        uint256 weightedMaxLtvValue; // maxLtvWithScoreBps-weighted collateral value — the absolute BitScore ceiling (Build 04)
         uint256 currentLiquidationThresholdBps; // collateral-value-weighted average
         uint256 healthFactorRay; // type(uint256).max if no debt
     }

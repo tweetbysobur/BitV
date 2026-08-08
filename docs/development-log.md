@@ -4,6 +4,111 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 4 — BitScore implementation and validation (Build 04, part 2)
+
+**Date:** 2026-08-08
+
+**Context:** Implements `docs/bitscore-specification.md` (approved
+design from the first half of Build 04). Cleanverse interfaces
+untouched. Core lending economics touched only where necessary for the
+approved integration (see below).
+
+**Contracts created:** `BitScoreManager.sol` (accumulator, tier
+calculation, LTV-adjustment computation, quoted rate-discount
+computation, admin/record functions), `IBitScoreManager.sol`.
+
+**Contracts modified:**
+- `DataTypes.sol` — added `Pool.maxLtvWithScoreBps` (BitScore's LTV
+  ceiling per asset) and `AccountData.weightedMaxLtvValue`.
+- `BitVPoolManager.sol` — `PoolConfigParams`/`createPool`/
+  `setRiskParams`/`_validateRiskParams` extended for the new ceiling
+  field, validated to sit between `ltvBps` and `liquidationThresholdBps`.
+- `BitVLendingManager.sol` — wired `IBitScoreManager` in (optional,
+  `address(0)`-disableable), added `_effectiveAvailableBorrowValue`
+  (the real LTV integration point, triple-clamped — see
+  `docs/bitscore-implementation.md`), `_recordRepayment`/
+  `_recordLiquidation`/`_recordUtilizationSnapshot` (try/catch-wrapped,
+  fail-safe), `getEffectiveAvailableBorrowValue`/
+  `getQuotedBaseRateDiscountRay` views. **Fixed a real pre-existing bug**
+  in `repay()`: full-close detection via scaled-balance comparison was
+  unreliable (rounding), routinely leaving 1 wei of dust debt and never
+  triggering BitScore's `wasFullClose` signal; fixed with an exact
+  underlying-amount comparison plus a new `type(uint256).max` repay-all
+  sentinel (mirroring `withdraw()`'s existing pattern).
+
+**Score model implemented:** 0–1000, start 300, four tiers exactly as
+specified. Single consolidated decaying `positiveContribution`
+accumulator (documented deviation from the spec's per-category-window
+sketch — point values/cap preserved), separate slower-decaying
+liquidation penalty, permanent bad-debt penalty. Decay-then-add pattern,
+O(1) per update, no history replay.
+
+**Lending integration:** LTV adjustment is real (wired into `borrow()`'s
+actual capacity check, triple-clamped so a `BitScoreManager` bug
+provably cannot exceed the asset's configured ceiling). Interest rate
+adjustment is quoted/informational only — `BitVPoolManager`'s shared
+borrow index makes a genuine per-user rate incompatible with this
+milestone's scope; documented as the one real spec-vs-implementation
+contradiction found, resolved rather than forced or hidden.
+
+**Compliance ordering:** unchanged — `_requireCompliance` always runs
+first in every protected `BitVLendingManager` function; `BitScoreManager`
+has no reference to, and never calls, `IAPassComplianceValidator`.
+
+**Anti-gaming:** per-input caps (single consolidated cap, 700 points),
+minimum 1-day position duration before repayment credit (zero credit
+below it, not partial), no credit for pool deposit/withdraw cycles
+(BitScore only hooks lending-side events), decay windows, wallet
+tenure only accrues alongside real lending activity. Wash-borrowing
+explicitly still unresolved, restated rather than silently dropped.
+
+**Fail-safe:** every BitScore call site in `BitVLendingManager` is
+`try`/`catch`-wrapped; failure/disablement always falls back to base
+parameters, never something more favorable — proven directly by a new
+fuzzed invariant (`invariant_BitScoreFailureNeverMoreFavorableThanBase`),
+not just asserted in a scenario test.
+
+**Tests created:** `BitScoreManager.t.sol` (21 tests, covering all 20
+scenarios the milestone listed plus one extra), 5 new BitScore-specific
+fuzzed invariants added to `BitVInvariant.t.sol` (score ≤ 1000, score ≥
+0, unauthorized caller cannot increase score, LTV adjustment cannot
+exceed the configured ceiling, BitScore failure never more favorable
+than base) alongside the 3 already-existing pool/lending/compliance
+invariants.
+
+**Foundry test result:** `forge test -vvv` — **71/71 PASS** across 6
+suites (11 compliance + 12 pool + 12 lending + 7 liquidation + 21
+BitScore + 8 invariant, the last including all 3 pre-existing plus 5 new
+BitScore invariants). Two rounds of real failures found and fixed during
+this milestone, not weakened or deleted:
+1. A `vm.prank` scope bug in a new access-control test (same class as
+   Build 03.5's — a role-hash lookup between `prank` and the call
+   consumed the prank).
+2. The `repay()` full-close precision bug described above, discovered
+   via a debug trace (`console2.log`, not kept) after several test
+   iteration-count miscalibrations turned out to be secondary to this
+   root cause. Several test loop iteration counts were also increased
+   after confirming (via the same debug trace) that decay-tempered score
+   growth per event was slower than initially assumed — a test-
+   calibration fix, not a contract change.
+
+**Invariant result:** 8/8 PASS (256 runs × 500 calls each, 3
+pre-existing + 5 new).
+
+**Remaining limitations:** interest-rate quoted-only (not a real
+per-user discount), decay-tempered score growth converges below the
+nominal 1000 cap at realistic event cadences (the cap itself is never
+violated — proven, not just claimed), wash-borrowing unresolved,
+single protocol-wide (not per-asset) score, no negative utilization
+penalty path, tenure only accrues via lending activity (supply-only
+users get no differentiation). Full detail in
+`docs/bitscore-implementation.md`.
+
+**Not implemented (per instruction):** yield vaults, RWA markets,
+governance, cross-chain functionality, production deployment.
+
+---
+
 ## Milestone 3.5 — Economic engine validation (Build 03.5)
 
 **Date:** 2026-08-08

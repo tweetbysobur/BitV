@@ -45,6 +45,7 @@ contract BitVPoolManager is BitVComplianceGuard, BitVRoleConsumer, ReentrancyGua
 
     struct PoolConfigParams {
         uint16 ltvBps;
+        uint16 maxLtvWithScoreBps; // Build 04: BitScore's absolute LTV ceiling for this asset; pass equal to ltvBps for "no bonus possible"
         uint16 liquidationThresholdBps;
         uint16 liquidationBonusBps;
         uint16 reserveFactorBps;
@@ -80,7 +81,7 @@ contract BitVPoolManager is BitVComplianceGuard, BitVRoleConsumer, ReentrancyGua
 
     function createPool(address asset, PoolConfigParams calldata cfg) external onlyRole(ACCESS_MANAGER.PROTOCOL_ADMIN_ROLE()) {
         if (_pools[asset].isActive) revert ProtocolErrors.PoolAlreadyExists(asset);
-        _validateRiskParams(cfg.ltvBps, cfg.liquidationThresholdBps, cfg.liquidationBonusBps);
+        _validateRiskParams(cfg.ltvBps, cfg.maxLtvWithScoreBps, cfg.liquidationThresholdBps, cfg.liquidationBonusBps);
 
         _pools[asset] = DataTypes.Pool({
             isActive: true,
@@ -88,6 +89,7 @@ contract BitVPoolManager is BitVComplianceGuard, BitVRoleConsumer, ReentrancyGua
             isBorrowingEnabled: cfg.isBorrowingEnabled,
             isCollateralEnabled: cfg.isCollateralEnabled,
             ltvBps: cfg.ltvBps,
+            maxLtvWithScoreBps: cfg.maxLtvWithScoreBps,
             liquidationThresholdBps: cfg.liquidationThresholdBps,
             liquidationBonusBps: cfg.liquidationBonusBps,
             reserveFactorBps: cfg.reserveFactorBps,
@@ -127,14 +129,18 @@ contract BitVPoolManager is BitVComplianceGuard, BitVRoleConsumer, ReentrancyGua
         emit PoolConfigUpdated(asset);
     }
 
-    function setRiskParams(address asset, uint16 ltvBps, uint16 liquidationThresholdBps, uint16 liquidationBonusBps)
-        external
-        onlyRole(ACCESS_MANAGER.RISK_MANAGER_ROLE())
-    {
-        _validateRiskParams(ltvBps, liquidationThresholdBps, liquidationBonusBps);
+    function setRiskParams(
+        address asset,
+        uint16 ltvBps,
+        uint16 maxLtvWithScoreBps,
+        uint16 liquidationThresholdBps,
+        uint16 liquidationBonusBps
+    ) external onlyRole(ACCESS_MANAGER.RISK_MANAGER_ROLE()) {
+        _validateRiskParams(ltvBps, maxLtvWithScoreBps, liquidationThresholdBps, liquidationBonusBps);
         DataTypes.Pool storage pool = _pools[asset];
         if (!pool.isActive) revert ProtocolErrors.PoolNotActive(asset);
         pool.ltvBps = ltvBps;
+        pool.maxLtvWithScoreBps = maxLtvWithScoreBps;
         pool.liquidationThresholdBps = liquidationThresholdBps;
         pool.liquidationBonusBps = liquidationBonusBps;
         emit PoolConfigUpdated(asset);
@@ -171,15 +177,25 @@ contract BitVPoolManager is BitVComplianceGuard, BitVRoleConsumer, ReentrancyGua
         emit PoolConfigUpdated(asset);
     }
 
-    function _validateRiskParams(uint16 ltvBps, uint16 liquidationThresholdBps, uint16 liquidationBonusBps)
-        internal
-        pure
-    {
+    function _validateRiskParams(
+        uint16 ltvBps,
+        uint16 maxLtvWithScoreBps,
+        uint16 liquidationThresholdBps,
+        uint16 liquidationBonusBps
+    ) internal pure {
         // LTV must leave room below the liquidation threshold, which
         // itself must leave room for the liquidation bonus without
         // guaranteeing bad debt on every liquidation.
         if (ltvBps > liquidationThresholdBps) revert ProtocolErrors.InvalidRiskParams();
         if (liquidationThresholdBps >= 10_000) revert ProtocolErrors.InvalidRiskParams();
+        // Build 04: BitScore's absolute LTV ceiling must sit between the
+        // base LTV and the liquidation threshold — it can never be lower
+        // than the base (that would make "the bonus" a penalty by
+        // construction) and never exceed the threshold (that would let a
+        // score-boosted position start life already liquidatable).
+        if (maxLtvWithScoreBps < ltvBps || maxLtvWithScoreBps > liquidationThresholdBps) {
+            revert ProtocolErrors.InvalidRiskParams();
+        }
         // A bonus that pushes seized value above 100% of collateral at the
         // threshold boundary is a known, documented bad-debt tradeoff (see
         // docs/protocol-architecture.md) — allowed, but capped so it can't
