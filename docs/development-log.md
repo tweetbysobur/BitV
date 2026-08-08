@@ -4,6 +4,74 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 6.1 — RWA-backed market specification (Build 06)
+
+**Date:** 2026-08-08
+
+**Context:** Documentation-only. No Solidity written or modified — every
+existing contract (`BitVPoolManager`, `BitVLendingManager`,
+`BitVComplianceGuard`, `BitScoreManager`, `BitVYieldVault`,
+`BitVTreasury`, `BitVAccessManager`) is untouched.
+
+**Deliverable:** `docs/rwa-market-specification.md` — full specification
+covering purpose, architecture decision, Cleanverse/CVI/CVA integration,
+asset registry, collateral verification, oracle model, LTV model,
+borrowing, liquidation, frozen-asset handling, access control,
+compliance, risk controls, security model, privacy, test plan, future
+extensions, and open questions.
+
+**Key decisions:**
+- **Architecture: (B) a dedicated `BitVRWACollateralRegistry` contract
+  connected to `BitVLendingManager` via a narrow, optional,
+  `try`/`catch`-wrapped interface** — mirrors the `BitScoreManager`
+  integration pattern (Build 04) exactly, rather than extending
+  `BitVLendingManager` directly. The existing collateral/borrow/repay/
+  liquidate engine is reused 100% unmodified; the registry only adds an
+  upstream gate on whether a given RWA asset's collateral currently
+  counts toward *new* borrowing capacity.
+- **CVI unchanged, CVA not issued** — BitV remains a CVA *consumer*, not
+  an issuer, consistent with `docs/cleanverse-integration.md` §3. No CVA
+  contract address, API, or verification field is invented; where
+  Cleanverse doesn't expose an on-chain "is this asset verified" query,
+  the spec designs a BitV-controlled, admin-attested registry boundary
+  instead of pretending one exists.
+- **Hard LTV ceilings preserved exactly as Build 04's pattern already
+  guarantees** — BitScore adjusts within a registry/pool-configured
+  `maxLtvWithScoreBps` ceiling, never past it; no new LTV mechanism is
+  introduced for RWA collateral.
+- **Liquidation engine reused unmodified** — no duplicate liquidation
+  logic. RWA-specific liquidation considerations (illiquid collateral,
+  delayed settlement, market closure, frozen assets, oracle failure,
+  redemption restrictions) are resolved via a single choke point: the
+  registry's "is this asset's collateral available for new borrowing
+  capacity" check, plus an explicit table of which operations
+  (deposit/borrow/repay/withdraw/liquidate) remain available under each
+  `AssetStatus`. Frozen/delisted assets always keep repayment,
+  withdrawal, and liquidation available — never new deposits or new
+  borrowing.
+- **Oracle staleness gap identified, not hand-waved** — the existing
+  `IPriceOracle`/`StaticPriceOracle` have no timestamp field at all;
+  this is flagged as a real implementation dependency requiring either
+  an interface extension or a new staleness-aware adapter, not silently
+  assumed solved. Zero price and stale price are both treated as
+  "unavailable," never as valid data.
+- **Roles: two new, not four** — `RWA_ADMIN_ROLE` and
+  `ORACLE_MANAGER_ROLE` are added; the task's `RISK_MANAGER` and
+  `PAUSER` roles are the *existing* `RISK_MANAGER_ROLE`/`PAUSER_ROLE`
+  reused directly, per "do not create unnecessary roles."
+
+**Not done (per instruction):** no Solidity written, no contracts
+modified, nothing deployed.
+
+**Next recommended milestone:** implement `BitVRWACollateralRegistry`
+and the narrow `IRWACollateralRegistry` interface per this
+specification, wire the two new roles into `BitVAccessManager`, resolve
+open question 6 (oracle interface evolution) before writing the
+staleness-aware oracle adapter, and build the Foundry test suite per
+§18.
+
+---
+
 ## Milestone 5.2 — Permissioned yield vault implementation (Build 05.1)
 
 **Date:** 2026-08-08
