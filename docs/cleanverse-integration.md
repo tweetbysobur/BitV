@@ -21,7 +21,33 @@ providing two official PDFs:
    `IATokenPolicy`) from the CVI validator, not the same contract.
 
 Everything in this document is transcribed or paraphrased from those two
-PDFs. Anything not in them is still marked `UNCONFIRMED`.
+PDFs. Anything not in them is still marked `UNCONFIRMED`. Build 02.5
+re-audited the entire implementation line-by-line against these same two
+PDFs (no new source material) and found one real error, corrected in §4/§5
+below: an earlier version of this document claimed the CVI validator's
+registration signature scheme was "the same" as the CVA guide's EIP-191
+`personal_sign` scheme — the CVI guide never says that; only the CVA guide
+does. Everything else audited (the full `IAPassComplianceValidator`
+interface, `RuleV2` field names/types/semantics, `complianceVerify`
+behavior, Single-Contract Mode requirements) checked out unchanged against
+the source PDFs.
+
+## Verification Table
+
+| Cleanverse Component | Official Definition | BitV Usage | Verified |
+|---|---|---|---|
+| `IAPassComplianceValidator` | On-chain CVI compliance validator contract, CVI guide §Overview | `BitVComplianceGuard.COMPLIANCE_VALIDATOR` (immutable) | ✅ Confirmed |
+| `RuleV2` struct | `bytes2 allowedGroup, bytes2 allowedSubGroup, uint8 minTier, uint8 minSubTier, uint256 poolCountryBitmap`, CVI guide §3.1 | Mirrored exactly in the interface and `services/cleanverse/types.ts` | ✅ Confirmed |
+| Rule logic (AND/OR) | "Fields within a single RuleV2 are AND; multiple RuleV2s are OR; country bitmaps are checked via bitwise AND," CVI guide §3.1 | `MockComplianceValidator.complianceVerify` test implementation; real semantics enforced by the real validator, not BitV's contracts | ✅ Confirmed |
+| `complianceVerify(address poolAddress, address userAddress) view returns (bool)` | CVI guide §3.2 | `BitVComplianceGuard._requireCompliance` | ✅ Confirmed |
+| Registration functions (`registerV2`, `registerApass` ×2, `setRuleV2FromRegistrar`, `isRegistered`) | CVI guide §3.2, `REGISTER_ROLE`-gated | Declared in the interface, not called by BitV's Single-Contract-Mode contracts | ✅ Confirmed (signatures); not exercised |
+| Rule-management (`setRuleV2FromContract`/`addRuleV2FromContract`/`removeRuleV2FromContract`/`getRulesV2`) | CVI guide §3.2/§5.2/§6, callable by the business contract itself | `BitVComplianceGuard` owner-gated wrappers | ✅ Confirmed |
+| Single-Contract Mode | CVI guide §5: "does not require Factory authorization. Deploy the contract and register it via the API" | Chosen architecture for all of BitV's protected contracts | ✅ Confirmed as the documented, applicable pattern |
+| Factory Mode | CVI guide §4: for "multi-pool business (DEX, Launch Pool)" | Not implemented; documented as a future option (§12) | ✅ Confirmed as not currently needed |
+| CVA / `IComplianceRule` / `IATokenPolicy` | CVA guide — separate interface (`canTransfer`, not `complianceVerify`) for issuing a compliant token | Not implemented — BitV isn't issuing a CVA this milestone | ✅ Confirmed distinct from the CVI validator |
+| Validator registration signing scheme | CVI guide §5.4: `keccak256(chain + contract_address)`, lowercase hex — algorithm/field name not stated | Not implemented (no API client yet) | ❌ UNCONFIRMED (corrected this milestone — see above) |
+| Validator's deployed address (any network) | Not given in either guide | `NEXT_PUBLIC_CLEANVERSE_VALIDATOR_ADDRESS` left empty | ❌ UNCONFIRMED |
+| Monad Testnet support | Not named in either guide (CVA guide lists "Ethereum, Base, BSC, Arbitrum, Polygon, etc." — Monad absent from that list, though the guides are chain-agnostic Solidity/API specs) | N/A | ❌ UNCONFIRMED |
 
 ## 1. Cleanverse architecture
 
@@ -111,18 +137,29 @@ Mode) — BitV's own Single-Contract-Mode contracts never hold
 states the business contract calls "itself" (no special role needed
 beyond being the registered pool).
 
-**Confirmed, off-chain API side:** Two different signing/encryption
-schemes appear across the two guides:
+**Confirmed, off-chain API side — these are two separate, only
+partially-specified schemes; do not assume they're identical:**
+- **CVA registration** (`POST /api/cooperate/atoken/register`, CVA guide
+  §"Step 2"): field `owner_signature`, explicitly documented as "EIP-191
+  `personal_sign` signature over `lowercase(chain + atoken_address)`."
+- **Validator registration** (`POST /api/cooperate/validator/register`,
+  CVI guide §5.4): documented only as "Signature Rule:
+  `keccak256(chain + contract_address)`, lowercase hex concatenation."
+  The CVI guide does **not** say this is EIP-191 `personal_sign`, does
+  not name a request field (no confirmed `owner_signature` field for this
+  endpoint — that name only appears in the CVA guide), and doesn't state
+  what's actually signed with that hash (raw ECDSA over the hash? the hash
+  as an EIP-191 message?). An earlier version of this document incorrectly
+  asserted these two schemes were "the same" — corrected in Build 02.5;
+  treat the validator-registration signing mechanism as **UNCONFIRMED**
+  beyond "some signature covering `keccak256(chain + contract_address)`."
 - Launch CVA API (`POST /api/cooperate/atoken/launch`): request body's
   `data` field is AES/CBC/PKCS5Padding-encrypted, then base64-encoded;
   `api-id` and `X-Request-ID` headers are set.
-- Register CVA API / validator registration: `owner_signature` is an
-  EIP-191 `personal_sign` signature over `lowercase(chain + address)`
-  (the CVI guide's §5.4 gives the same signature rule for validator
-  contract registration).
 
-**Still unconfirmed:** the API key/`api-id` provisioning process itself,
-full request/response schemas beyond the fields listed in §7, and
+**Still unconfirmed:** the exact signing/hashing algorithm for validator
+registration (see above), the API key/`api-id` provisioning process
+itself, full request/response schemas beyond the fields listed in §5, and
 webhook/callback (`callback_url`) payload verification.
 
 **Never expose client-side:** any Cleanverse API key/credential used for
@@ -134,9 +171,9 @@ the AES encryption or signing above. `.env.example` keeps
 | Method | Path | Purpose | Auth | Notes |
 |---|---|---|---|---|
 | POST | `/api/cooperate/validator/grant` | Grant `REGISTER_ROLE` to a Factory address | Off-chain (unspecified scheme) | Factory Mode only — not used by BitV's Single-Contract Mode |
-| POST | `/api/cooperate/validator/register` | Register a Single-Contract-Mode business contract with the validator | `owner_signature` = EIP-191 `personal_sign(keccak256(lowercase(chain + contract_address)))` | **This is the call BitV needs** before any deployed BitV contract's `complianceVerify` will do anything meaningful |
+| POST | `/api/cooperate/validator/register` | Register a Single-Contract-Mode business contract with the validator | Signature rule only: `keccak256(chain + contract_address)`, lowercase hex concatenation — signing algorithm and request field name **UNCONFIRMED** (see §4) | **This is the call BitV needs** before any deployed BitV contract's `complianceVerify` will do anything meaningful |
 | POST | `/api/cooperate/atoken/launch` | Launch a new CVA (Method A) | AES/CBC/PKCS5Padding-encrypted body, `api-id` + `X-Request-ID` headers | Not used by BitV this milestone (BitV isn't issuing a CVA) |
-| POST | `/api/cooperate/atoken/register` | Register a self-deployed CVA contract (Method B) | `owner_signature` (same scheme as validator/register) | Not used by BitV this milestone |
+| POST | `/api/cooperate/atoken/register` | Register a self-deployed CVA contract (Method B) | `owner_signature` = EIP-191 `personal_sign` over `lowercase(chain + atoken_address)` (confirmed for **this** endpoint only) | Not used by BitV this milestone |
 | — | Query Apply Status API | Poll CVA verification status | UNCONFIRMED — path not given | Referenced by name only |
 | — | Query Supported CVA List | Look up e.g. AccessCore's address for `MINTER_ROLE` grants | UNCONFIRMED — path not given | Referenced by name only |
 | — | Add CVA Rule API | Append a RuleV2 to a CVA off-chain instead of calling `addRuleV2` directly | UNCONFIRMED — path not given | Referenced by name only |
@@ -157,9 +194,11 @@ does not import any `@cleanverse/*` package.
 
 | Item | Value | Status |
 |---|---|---|
-| Network | Monad Testnet | BitV's own target network; both guides say "Supported networks: EVM (Ethereum, Base, BSC, Arbitrum, Polygon, etc.)" — Monad isn't named explicitly in the CVA guide's list, but the guides are network-agnostic Solidity/API specs, not chain-specific |
+| Explicit Monad Testnet support | Not stated by either guide. The CVA guide's "Supported networks" line names "Ethereum, Base, BSC, Arbitrum, Polygon, etc." — Monad is absent from that explicit list (though "etc." and the guides' network-agnostic Solidity/API design leave it plausible). The CVI guide states no network list at all. | **UNCONFIRMED** — do not assume Monad Testnet support without asking Cleanverse directly |
+| Chain ID | Not given by either guide for any network, including Monad | **UNCONFIRMED** |
 | Contract | `IAPassComplianceValidator` | **Fully implemented** — `contracts/src/interfaces/external/IAPassComplianceValidator.sol`, transcribed from the CVI guide §3.2 |
-| Deployed address on Monad Testnet | — | **UNCONFIRMED** — `NEXT_PUBLIC_CLEANVERSE_VALIDATOR_ADDRESS` left empty |
+| Deployed validator address (any network, including Monad Testnet) | — | **UNCONFIRMED** — `NEXT_PUBLIC_CLEANVERSE_VALIDATOR_ADDRESS` left empty; no address invented |
+| CVA contract addresses | — | **UNCONFIRMED** — not applicable yet (BitV isn't issuing/holding a named CVA) |
 | `RuleV2` fields | `bytes2 allowedGroup, bytes2 allowedSubGroup, uint8 minTier, uint8 minSubTier, uint256 poolCountryBitmap` | **Confirmed**, verbatim from CVI guide §3.1 |
 | Validation logic | Fields within one `RuleV2`: AND. Multiple `RuleV2`s: OR. Country bitmaps: bitwise AND. | **Confirmed** |
 | Registration functions (`REGISTER_ROLE`) | `registerV2`, `registerApass` (2 overloads), `setRuleV2FromRegistrar`, `isRegistered` | **Confirmed**, declared in the interface; not called by BitV's Single-Contract-Mode contracts |
@@ -218,8 +257,9 @@ Connect wallet
   concern**: a deployed BitV contract's `complianceVerify` calls will
   simply return however the (unregistered) validator answers until
   someone calls `POST /api/cooperate/validator/register` with a valid
-  `owner_signature` for that contract — this is an operational/deployment
-  step, tracked in §11/§12, not something Solidity code can enforce.
+  signature over `keccak256(chain + contract_address)` for that contract
+  (exact request field/algorithm UNCONFIRMED — see §4) — this is an
+  operational/deployment step, not something Solidity code can enforce.
 - **API key handling / AES encryption / signature verification** on the
   Cleanverse API side — the schemes are named (§4) but full
   implementation detail (key management, IV handling) wasn't given;

@@ -24,11 +24,10 @@ export const cleanverseClient = {
   /**
    * Will eventually read `IAPassComplianceValidator.complianceVerify`
    * (on-chain, via viem — see contracts/src/interfaces/external/
-   * IAPassComplianceValidator.sol) for a given pool/user pair. Left
-   * throwing until the validator's deployed address on Monad Testnet is
-   * confirmed (config/cleanverse.ts) and the interface itself is verified
-   * against primary Cleanverse documentation, not just this milestone's
-   * relayed description.
+   * IAPassComplianceValidator.sol) for a given pool/user pair. The
+   * interface itself is confirmed against the official CVI Integration
+   * Guide V2 PDF; left throwing purely because the validator's deployed
+   * address on Monad Testnet is still UNCONFIRMED (config/cleanverse.ts).
    */
   checkCompliance(_poolAddress: `0x${string}`, _userAddress: `0x${string}`): never {
     throw new Error(NOT_IMPLEMENTED);

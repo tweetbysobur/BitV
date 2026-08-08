@@ -4,6 +4,93 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 2.5 — Cleanverse interface verification audit (Build 02.5)
+
+**Date:** 2026-08-08
+
+**Context:** Line-by-line re-audit of the entire Cleanverse compliance
+implementation against the same two official PDFs used in Build 02.1
+(CVI Integration Guide V2, CVA Integration Guide) — no new source
+material this milestone, just a rigorous re-check of every claim already
+made, since a prior implementation had been provisional and this task
+explicitly asked not to preserve any assumption just because it already
+existed in the code.
+
+**Previous assumptions checked:**
+
+- `IAPassComplianceValidator`'s every function name, parameter, type, and
+  return value (Build 02.1's version).
+- `RuleV2`'s field names/types/semantics (Build 02.1's version).
+- `complianceVerify`'s behavior and preconditions.
+- Single-Contract Mode's required contract state.
+- The CVA mechanism and its relationship to the CVI validator.
+- The validator/CVA registration API flows, including authentication.
+- Whether Monad Testnet is explicitly named as supported.
+
+**Verified correct (no change needed):** the full `IAPassComplianceValidator`
+interface (all 10 functions, exact names/params/types/visibility — no
+events, errors, or modifiers exist in the source, and none were invented
+here either), `RuleV2`'s fields and AND/OR/bitwise-AND semantics,
+`complianceVerify`'s signature and "view, returns bool, no revert on its
+own" behavior, Single-Contract Mode's `immutable` validator + `Ownable`
+rule-management pattern, and the CVI-validator-vs-CVA-interface
+distinction (§3 of `docs/cleanverse-integration.md`).
+
+**Found incorrect and corrected:** `docs/cleanverse-integration.md`
+previously claimed the CVI validator's registration signature scheme
+(`POST /api/cooperate/validator/register`, CVI guide §5.4: "Signature
+Rule: `keccak256(chain + contract_address)`, lowercase hex
+concatenation") was "the same" as the CVA guide's `owner_signature`
+field ("EIP-191 `personal_sign` signature over `lowercase(chain +
+atoken_address)`"). The CVI guide never says `personal_sign`, never
+names a request field, and never states what's actually signed with that
+hash — that equivalence was an unstated inference dressed up as
+confirmed fact. Corrected across §4/§5/§10/the new Verification Table:
+the two schemes are now documented separately, and the validator's exact
+registration signing mechanism is marked `UNCONFIRMED`. This was a
+documentation-only error — no Solidity code depended on the wrong claim,
+since no API client was implemented against it.
+
+**No Solidity changes were needed this milestone** — the audit found the
+contracts (`IAPassComplianceValidator.sol`, `BitVComplianceGuard.sol`,
+the six `contracts/src/core/*.sol` contracts, the mock, and the test
+file) already matched the source PDFs after Build 02.1's corrections.
+One stale TS comment was fixed: `services/cleanverse/client.ts` referred
+to the interface as still needing verification against primary
+documentation, which is now done — only the deployed address remains
+unconfirmed.
+
+**`docs/cleanverse-integration.md`** gained a "Verification Table"
+(Cleanverse Component | Official Definition | BitV Usage | Verified) at
+the top, and §7's blockchain table was split out to explicitly flag
+"explicit Monad Testnet support," "chain ID," and "CVA contract
+addresses" as their own `UNCONFIRMED` rows rather than folding the Monad
+caveat into prose.
+
+**Tests:** Not modified this milestone (already correct from Build
+02.1). **NOT EXECUTED** — Foundry (`forge`) remains unavailable in this
+sandbox (`which forge` → exit 1; same network block on its installer as
+every prior milestone). Every contract and the test file were re-verified
+to compile clean via `solc@0.8.24` directly — this is a compilation
+check only, not a substitute for `forge test`'s cheatcode-driven
+execution, and is not reported as a test pass.
+
+**Remaining unknowns** (unchanged from Build 02.1's todo list, restated
+here per this milestone's instructions): CVI issuance/verification flow,
+CVI expiration/revocation, off-chain identity-status lookup API,
+validator's deployed address (any network), full paths for Query Apply
+Status / Query Supported CVA List / Add CVA Rule APIs, API key/`api-id`
+provisioning process, AES key-management detail for the Launch CVA API,
+validator/CVA events, pause/freeze function signatures, and — newly
+tightened this milestone — the validator-registration signing algorithm
+and explicit Monad Testnet support/chain ID.
+
+**Not done (per instructions):** no new features, no lending/liquidity
+economics, no BitScore, no contract deployment, no Factory Mode
+implementation, no API client implementation.
+
+---
+
 ## Milestone 2.1 — Cleanverse compliance foundation, corrected against real docs (Build 02.1)
 
 **Date:** 2026-08-08
