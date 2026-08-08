@@ -30,6 +30,13 @@
     --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
 
+    /* Status colors for risk/health indicators (healthy/warning) —
+       kept minimal and semantic, not decorative, per design-tokens.md. */
+    --success: 142 71% 35%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 5%;
+
     --radius: 0.5rem;
   }
 
@@ -52,6 +59,11 @@
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
+
+    --success: 142 65% 45%;
+    --success-foreground: 0 0% 5%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 5%;
   }
 
   * {

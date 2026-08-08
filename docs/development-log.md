@@ -4,6 +4,101 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 8 — Protocol dashboard + risk intelligence (Build 08)
+
+**Date:** 2026-08-08
+
+**Context:** First real frontend feature built on top of the (until now
+skeleton-only) Next.js app. No Cleanverse CVA interface was modified,
+`canTransfer` was not implemented, no Solidity/economic logic was
+touched, and nothing was deployed. Foundry baseline reconfirmed
+unchanged before and after: 218/218 tests, 7/7 CVA invariants, 10/10
+RWA invariants, 8/8 vault invariants, 8/8 lending invariants.
+
+**Routes added:** `/dashboard` (redirects to overview),
+`/dashboard/{overview,lending,vaults,rwa,pools,risk,activity,settings}`,
+all inside a shared `DashboardShell` (sidebar + topbar layout,
+desktop-first with an intentional mobile collapsible-nav layout, not a
+shrunk desktop view).
+
+**Data layer built from scratch** (hooks/, services/contracts/ were
+empty before this milestone): hand-transcribed, `as const` ABI
+fragments for every BitV contract the dashboard reads
+(`BitVPoolManager`, `BitVLendingManager`, `BitScoreManager`,
+`BitVYieldVault`, `BitVRWACollateralRegistry`, `BitVCVAAdapter`,
+Cleanverse's `IAPassComplianceValidator`), transcribed directly from
+`contracts/src/**/*.sol` — never guessed. Nine `hooks/use*.ts` functions,
+each returning a `DataState<T>` (`loading | loaded | empty |
+unavailable | error`) so no section can look successful while data is
+missing or a read failed. `services/contracts/addresses.ts` remains
+empty (no contract is deployed anywhere) — every section correctly
+renders its `unavailable`/`empty` state rather than fabricating data,
+per instruction.
+
+**CVI and CVA kept structurally separate**, exactly as required:
+`useCVIStatus`/`CVIStatus.tsx` answer only participant eligibility
+(`complianceVerify`); `useCVAStatus`/`RWAStatusCard.tsx` answer only
+asset/policy status via the registry's two independent flags
+(`isCVAAdminAttested`, `isCVAInterfaceVerified`). No label anywhere
+claims "Cleanverse approved" — `lib/cva.ts`'s
+`CVA_RECOGNITION_DISCLAIMER` is rendered alongside every CVA status
+display, and this is directly asserted by a test
+(`tests/cva.test.ts`).
+
+**BitScore displayed on the current 0-100 scale** (never 0-1000) —
+`lib/bitscore.ts` throws on any out-of-range input, so a legacy-scale
+value would fail loudly rather than render silently wrong.
+
+**A real bug found and fixed during this milestone's own test-writing,
+not a hypothetical**: `lib/health-factor.ts`'s original implementation
+converted a ray-scaled (1e27) `bigint` through `Number()` before
+comparing it against threshold constants — `Number.MAX_SAFE_INTEGER`
+(~9e15) is twelve orders of magnitude smaller than `RAY` (1e27), so the
+conversion silently lost precision and could flip a health-factor
+status right at an exact boundary (a health factor of exactly 1.5x
+reported "warning" instead of "healthy" in a failing test run). Fixed
+by keeping every threshold comparison and the display formatter in
+pure `bigint` arithmetic; the failing test (`tests/health-factor.test.ts`)
+caught this before it reached any component.
+
+**Test framework introduced from scratch** (none existed before this
+milestone): Vitest, 41 tests across 9 files, all pure-logic (BitScore
+tier mapping, health-factor display states, CVI status rendering, CVA
+status separation, RWA status rendering, wallet/network state
+derivation, multi-asset collateral/debt rendering, loading/error state
+model, vault strategy labeling) — no DOM rendering or wallet-provider
+mocking required, matching the task's minimum test list exactly.
+
+**Verification — all actually executed:**
+- `npx vitest run`: 9 test files, 41 tests, 41 passed, 0 failed.
+- `npm run lint`: clean, zero warnings.
+- `npx tsc --noEmit`: clean, zero errors.
+- `npm run build`: succeeds — 9 dashboard routes + existing `/` built.
+  Two pre-existing, unrelated warnings from RainbowKit's optional peer
+  dependencies (`@react-native-async-storage/async-storage` via
+  `@metamask/sdk`, `pino-pretty` via WalletConnect's logger) — neither
+  introduced by this milestone, both inert for a web deployment.
+- `forge test` (complete suite, re-run to confirm no regression from a
+  frontend-only change): **12 suites, 218 tests, 218 passed, 0 failed**
+  — unchanged from the pre-milestone baseline, exactly as expected
+  since no Solidity file was touched.
+
+**Not done (per instruction):** no CVA transfer enforcement, no
+governance, no cross-chain functionality, no economics changes, nothing
+deployed. `BitVCVAAdapter.previewTransfer` is not called anywhere in
+the dashboard (it always reverts on-chain by design).
+
+**Known limitations:** no contract is deployed anywhere, so every
+dashboard section currently shows its `unavailable`/`empty` state in
+practice; no activity indexer exists (`useActivity` always returns
+`unavailable` with an explicit explanation, never fabricated history);
+`isTestStrategy` for vaults has no on-chain source and is sourced
+entirely from BitV's own static deployment registry; vault underlying
+`symbol`/`decimals` resolution isn't wired up yet — all documented in
+full in `docs/dashboard-implementation.md`.
+
+---
+
 ## Milestone 7.3 — Cleanverse CVA interface verification (Build 07.2)
 
 **Date:** 2026-08-08
