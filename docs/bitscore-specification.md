@@ -1,27 +1,39 @@
 # BitScore Specification (Build 04)
 
-**Status: implemented and tested (Build 04, second half).** This
-document is the original design spec, reviewed and approved before any
-Solidity was written. See `docs/bitscore-implementation.md` for what was
-actually built, including two deliberate, documented deviations found
-necessary during implementation:
+**Status: SCALE UPDATE PENDING IMPLEMENTATION.** The deployed Build 04
+contracts (`BitScoreManager.sol` et al., see
+`docs/bitscore-implementation.md`) still run on the **original 0–1000
+scale** described in earlier revisions of this document. This revision
+rescales the specification to **0–100**, per an explicit instruction not
+to touch Solidity yet. Until a follow-up implementation milestone lands,
+**the deployed contracts and this document disagree on scale** — treat
+this document as the current target, and
+`docs/bitscore-implementation.md` as describing the pre-rescale
+contracts, until that milestone updates both.
+
+**Underlying architecture and scoring principles are unchanged** by
+this rescale: the same inputs, the same directional weighting
+(repayments > timeliness > tenure; utilization/collateralization as a
+secondary tempering signal), the same decay mechanics (single
+consolidated decaying positive-contribution accumulator, separately
+decaying liquidation penalty, permanent bad-debt penalty), the same
+per-input cap structure, the same anti-gaming rules, the same CVI/
+BitScore separation, and the same fail-safe behavior. Only the numeric
+range — and every number derived from it — changed.
+
+Two deviations from this spec were found necessary during the *first*
+Solidity implementation pass (still true of the deployed 0–1000
+contracts, and still the intended resolution once the 0–100 rescale is
+implemented):
 
 1. **Decay model consolidated** to a single accumulator/window instead
    of per-input-category windows (tractability simplification — point
-   values and the overall cap are preserved).
+   values and the overall cap are preserved, just rescaled below).
 2. **Interest rate adjustment is quoted/informational only**, not wired
    into real per-user accrual — `BitVPoolManager`'s shared borrow index
    makes a genuine per-user rate architecturally incompatible without a
-   much larger redesign, which this milestone was not scoped to do. This
-   is the one place implementation revealed a direct contradiction with
-   this document's Section 7 table, and it was resolved rather than
-   forced through or silently ignored.
-
-Everything else in this document — score range, tiers, LTV adjustment
-mechanics, anti-gaming caps, privacy model, fail-safe behavior,
-CVI/BitScore separation — was implemented as specified and is covered by
-21 dedicated tests plus 5 BitScore-specific fuzzed invariants, all
-passing under Foundry.
+   much larger redesign, out of scope for BitScore's MVP. This remains
+   unaffected by the score-scale change.
 
 ## 1. Purpose
 
@@ -73,29 +85,38 @@ within limits the asset's own risk configuration always caps.
 
 ## 3. Score model
 
-**Range: 0–1000, evaluated as requested.** Chosen over alternatives for
-these reasons (not assumed final — see Section 13 open questions):
+**Range: 0–100.** Superseding the original 0–1000 range (kept below for
+traceability of the decision this revision reverses):
 
-- **Not 0–100**: too coarse for the number of distinct inputs in Section
-  4 to each carry a meaningful, non-overlapping weight without rounding
-  several of them into indistinguishable single-point deltas.
-- **Not a signed range (e.g. -500 to +500)**: an unsigned range keeps
-  "zero" and "below zero" from being two different bad states that need
-  separate handling; 0 is the unambiguous floor.
-- **1000 specifically**: divides cleanly into the four-tier structure in
-  Section 6 (250-point bands) while still leaving room for fine-grained
-  point deltas per event (Section 4) without every event moving a user
-  a whole tier.
+- The original document chose 0–1000 specifically because "0–100 is too
+  coarse for the number of distinct inputs in Section 4 to each carry a
+  meaningful, non-overlapping weight without rounding several of them
+  into indistinguishable single-point deltas." **This rescale doesn't
+  eliminate that concern — it resolves it at the implementation layer
+  instead of the specification layer**: point deltas that would round to
+  indistinguishable whole numbers on a 0–100 scale (e.g. the original
+  timeliness bonus) are represented as documented fractional values in
+  this specification (Section 4), with the follow-up implementation
+  milestone expected to use fixed-point (e.g. storing "tenths of a
+  point" internally, dividing by 10 for any externally displayed score)
+  to preserve exact relative weighting without losing precision to
+  integer rounding. This is an implementation detail, not a principle
+  change — see Section 10.
+- The unsigned-range and "0 is the unambiguous floor" reasoning is
+  unchanged and still applies at the new scale.
+- **100 specifically**: divides cleanly into the four-tier structure in
+  Section 6 (25-point bands, as specified in the update instruction)
+  the same way 1000 divided into 250-point bands before.
 
-**Starting score: 300.** Not the midpoint (500) and not the floor (0) —
-a new, never-before-seen wallet has *no negative history* (shouldn't be
-penalized) but also *no positive history* (shouldn't be trusted as much
-as a wallet with a long clean track record). 300 sits inside Tier 1
-(Section 6), meaning every new user starts at base parameters with zero
-BitScore-driven adjustment — trust is earned from a neutral floor, not
-assumed.
+**Starting score: 30.** Directly rescaled from 300 (300/1000 = 30/100).
+Still not the midpoint (50) and not the floor (0), for the same reason
+as before: a new, never-before-seen wallet has *no negative history*
+(shouldn't be penalized) but also *no positive history* (shouldn't be
+trusted as much as a wallet with a long clean track record). 30 sits
+inside Tier 1 (Section 6), meaning every new user still starts at base
+parameters with zero BitScore-driven adjustment.
 
-**Minimum: 0. Maximum: 1000.** Both hard-clamped — no event can push a
+**Minimum: 0. Maximum: 100.** Both hard-clamped — no event can push a
 score outside this range regardless of magnitude or repetition.
 
 **Score calculation:** additive/subtractive point deltas applied
@@ -130,12 +151,12 @@ materially more sustained good behavior than the single event that
 caused the drop, consistent with Anti-Gaming (Section 8).
 
 **Score reset conditions: none, by default, for the MVP.** A full reset
-(back to 300) is a governance-level, `RISK_MANAGER_ROLE`-gated
+(back to 30) is a governance-level, `RISK_MANAGER_ROLE`-gated
 *emergency* action only (e.g. correcting a confirmed scoring bug for a
 specific user), not a normal part of the score's lifecycle — a user
 cannot reset their own score, and there's no automatic reset (e.g. after
 account inactivity) since that would be a Sybil vector (drain a bad
-score to zero activity, wait, "reset" back to neutral 300, better than
+score to zero activity, wait, "reset" back to neutral 30, better than
 staying at a poor earned score).
 
 ## 4. Inputs
@@ -149,11 +170,13 @@ direction, strength, decay.
 - **Why**: the single strongest positive signal — direct evidence the
   user borrows and pays back as agreed.
 - **Direction**: increases.
-- **Strength**: moderate per-event (+5 points per fully-closed loan,
+- **Strength**: moderate per-event (+0.5 points per fully-closed loan,
   i.e. a `repay()` call that brings `getCurrentDebt(user, asset)` to
-  zero), capped at a maximum contribution from this input alone (see
-  Section 4.9) so repayment count alone can't be farmed to max score
-  (Anti-Gaming, Section 8).
+  zero — rescaled from +5 on the original 0–1000 range; represented as
+  fixed-point internally per Section 3/Section 10, not literally a
+  fractional on-chain integer), capped at a maximum contribution from
+  this input alone (see Section 4.9) so repayment count alone can't be
+  farmed to max score (Anti-Gaming, Section 8).
 - **Decay**: yes — each counted repayment's contribution decays
   linearly to zero over a fixed window (suggested: 180 days) if no
   further qualifying activity occurs, so the score reflects *recent*
@@ -170,8 +193,9 @@ direction, strength, decay.
   moderate accrued interest; neutral (no bonus, no penalty) for
   positions closed extremely quickly (see Anti-Gaming 8.3 — instant
   open/close cycles get zero credit, not partial credit).
-- **Strength**: small per-event (+2 points), since this is a secondary
-  signal layered on top of 4.1, not a standalone strong one.
+- **Strength**: small per-event (+0.2 points, rescaled from +2), since
+  this is a secondary signal layered on top of 4.1, not a standalone
+  strong one.
 - **Decay**: yes, same window as 4.1 (they're both "closed loan"
   events, decay together).
 
@@ -184,7 +208,7 @@ direction, strength, decay.
   to a user about to become more leveraged as to one who is not.
 - **Direction**: not a score input at all — this is used directly in
   the lending-impact calculation (Section 7), not folded into the
-  0–1000 score itself, to keep the score a reputation signal (slow-
+  0–100 score itself, to keep the score a reputation signal (slow-
   moving) rather than a real-time exposure gauge (fast-moving). See
   Section 7 for how current utilization tempers a score-based
   improvement.
@@ -200,9 +224,9 @@ direction, strength, decay.
   sustained high utilization (>90% of permitted borrow value) —
   "sustained" meaning observed at multiple update points, not a single
   snapshot, to avoid punishing a single legitimate large borrow.
-- **Strength**: small (+/-1 to 3 points per qualifying observation),
-  the weakest input in this list — a secondary tie-breaker, not a
-  primary driver.
+- **Strength**: small (+/-0.1 to 0.3 points per qualifying observation,
+  rescaled from +/-1 to 3), the weakest input in this list — a
+  secondary tie-breaker, not a primary driver.
 - **Decay**: yes, fast (suggested: 30-day window) — this reflects
   *recent* risk posture, not lifetime behavior.
 
@@ -213,7 +237,8 @@ direction, strength, decay.
   whether they've ever had to be liquidated.
 - **Direction**: increases for sustained health factor comfortably
   above 1 (suggested: >1.5 observed consistently).
-- **Strength**: small (+1 to 2 points per qualifying observation).
+- **Strength**: small (+0.1 to 0.2 points per qualifying observation,
+  rescaled from +1 to 2).
 - **Decay**: yes, same 30-day window as 4.4 (both are "current risk
   posture" signals, not permanent history).
 
@@ -222,12 +247,13 @@ direction, strength, decay.
 - **Why**: the strongest negative signal — direct evidence a position
   became unhealthy and had to be forcibly closed.
 - **Direction**: decreases.
-- **Strength**: large per-event (-100 points for a full liquidation,
-  -50 for a partial one that still leaves the position open under the
+- **Strength**: large per-event (-10 points for a full liquidation, -5
+  for a partial one that still leaves the position open under the
   close-factor cap — see `docs/protocol-architecture.md`'s liquidation
-  model), deliberately much larger in magnitude than any single
-  positive input, so no realistic combination of positive events from
-  one time period offsets one liquidation from the same period.
+  model; rescaled from -100/-50), deliberately much larger in magnitude
+  than any single positive input, so no realistic combination of
+  positive events from one time period offsets one liquidation from the
+  same period.
 - **Decay**: **partial only, and slow** — the numeric score deduction
   itself decays over a long window (suggested: 365 days) back toward
   neutral, but the *event itself* is never erased from the user's
@@ -242,13 +268,14 @@ direction, strength, decay.
   This is categorically worse than a normal liquidation: the protocol
   itself absorbed a loss.
 - **Direction**: decreases, sharply.
-- **Strength**: largest single penalty (-300 points), and — unlike
-  every other input — **does not decay**. A bad-debt event is a
-  permanent mark. This is the one input where "recovery" (Section 3)
-  is deliberately made very slow: climbing back from a -300 event via
-  only +5-point repayment increments requires dozens of qualifying
-  events over a long period, which is the intended friction, not an
-  oversight.
+- **Strength**: largest single penalty (-30 points, rescaled from
+  -300), and — unlike every other input — **does not decay**. A
+  bad-debt event is a permanent mark. This is the one input where
+  "recovery" (Section 3) is deliberately made very slow: climbing back
+  from a -30 event via only +0.5-point repayment increments requires
+  dozens of qualifying events over a long period, which is the intended
+  friction, not an oversight — same relative ratio as the original
+  -300-via-+5-increments framing.
 - **Decay**: none.
 
 ### 4.8 Length of protocol activity (tenure)
@@ -262,8 +289,8 @@ direction, strength, decay.
 - **Direction**: increases, very mildly, and only in combination with
   actual activity (a dormant wallet that's merely "old" gets nothing —
   this is tenure-with-activity, not wallet age alone).
-- **Strength**: smallest of all inputs (+1 point per 30 days of
-  activity, capped low — see Section 4.9).
+- **Strength**: smallest of all inputs (+0.1 point per 30 days of
+  activity, rescaled from +1, capped low — see Section 4.9).
 - **Decay**: no — tenure, once accrued, doesn't un-happen. (Its
   *influence* is capped low enough that this doesn't matter much either
   way.)
@@ -271,41 +298,46 @@ direction, strength, decay.
 ### 4.9 Per-input caps (anti-gaming, tying Section 4 together)
 
 No single input category may contribute more than a fixed share of the
-700-point range above the 300 starting score:
+**70-point range above the 30 starting score** (rescaled from the
+original 700-point range above 300, same 70% proportion of the total
+climb):
 
 | Input | Max contribution |
 |---|---|
-| Repayments + timeliness (4.1, 4.2) | 350 points |
-| Utilization + collateralization (4.4, 4.5) | 150 points |
-| Tenure (4.8) | 50 points |
+| Repayments + timeliness (4.1, 4.2) | 35 points (was 350) |
+| Utilization + collateralization (4.4, 4.5) | 15 points (was 150) |
+| Tenure (4.8) | 5 points (was 50) |
 | Liquidation/bad-debt penalties (4.6, 4.7) | unbounded downward (can drive score to 0) |
 
 This means reaching the top tier requires a *combination* of sustained
 good repayment behavior, conservative risk posture, and tenure — not
-maximum farming of any single cheap-to-repeat action.
+maximum farming of any single cheap-to-repeat action. Same principle,
+same proportions, as the original range.
 
 ## 5. Scoring rules (summary)
 
-`score = clamp(300 + Σ(decayed positive contributions, each capped per
+`score = clamp(30 + Σ(decayed positive contributions, each capped per
 Section 4.9) - Σ(liquidation penalties, decayed per 4.6) -
-Σ(bad-debt penalties, never decayed), 0, 1000)`
+Σ(bad-debt penalties, never decayed), 0, 100)`
 
 Applied as a running accumulator, recalculated (decay applied lazily)
 whenever a triggering event occurs or the score is read — not
 recomputed from full history each time (see Section 10 for the
-storage shape that makes this practical).
+storage shape that makes this practical). Mechanically identical to the
+original 0–1000 formula, only the constants changed (30 replaces 300,
+100 replaces 1000).
 
 ## 6. Risk tiers
 
-Four tiers, 250-point bands matching the 0–1000 range chosen in Section
-3:
+Four tiers, **25-point bands** (rescaled from the original 250-point
+bands matching the 0–1000 range):
 
 | Tier | Range | Name | Meaning |
 |---|---|---|---|
-| 0 | 0–249 | **Restricted** | Below the starting score — reached only through liquidations/bad debt. No BitScore-driven improvement to any parameter; may additionally face a *reduction* from base parameters (Section 7) as a protective measure, not just "no bonus." |
-| 1 | 250–499 | **Standard** | The default tier — includes the starting score of 300. Base asset-level parameters apply exactly, no adjustment either direction. This is intentionally the largest starting surface: most users, especially new ones, live here. |
-| 2 | 500–749 | **Established** | Sustained positive history. Modest, capped improvements to LTV/rate/threshold (Section 7). |
-| 3 | 750–1000 | **Trusted** | The strongest sustained history achievable under the caps in Section 4.9 combined with a long liquidation/bad-debt-free record. Maximum permitted BitScore-driven improvement — still bounded by the asset's own ceiling, never beyond it. |
+| 0 | 0–24 | **Restricted** | Below the starting score — reached only through liquidations/bad debt. No BitScore-driven improvement to any parameter; may additionally face a *reduction* from base parameters (Section 7) as a protective measure, not just "no bonus." |
+| 1 | 25–49 | **Standard** | The default tier — includes the starting score of 30. Base asset-level parameters apply exactly, no adjustment either direction. This is intentionally the largest starting surface: most users, especially new ones, live here. |
+| 2 | 50–74 | **Established** | Sustained positive history. Modest, capped improvements to LTV/rate/threshold (Section 7). |
+| 3 | 75–100 | **Trusted** | The strongest sustained history achievable under the caps in Section 4.9 combined with a long liquidation/bad-debt-free record. Maximum permitted BitScore-driven improvement — still bounded by the asset's own ceiling, never beyond it. |
 
 Names chosen to describe standing on BitV specifically ("Restricted" /
 "Standard" / "Established" / "Trusted"), not to imply a generic credit
@@ -385,9 +417,9 @@ current risk rises.
 | **Creating artificial activity purely to raise score** | The combination of per-input caps, minimum-duration rules, and decay is intended to make genuine, sustained, capital-at-risk usage cheaper than any artificial pattern — not provably ungameable (no on-chain reputation system is), but raising the cost/benefit ratio is the explicit design goal, documented as such rather than claimed as solved. |
 
 **Wallet age is explicitly not used as a major factor** — Section 4.8's
-tenure input is the smallest-weighted input in the entire model (max 50
-points out of a possible 700-point climb) and requires *activity*
-during that tenure, not mere existence.
+tenure input is the smallest-weighted input in the entire model (max 5
+points out of a possible 70-point climb, rescaled from 50/700) and
+requires *activity* during that tenure, not mere existence.
 
 ## 9. Privacy
 
@@ -438,7 +470,7 @@ see storage design below).
 
 ```solidity
 struct ScoreState {
-    uint16 score;                    // 0-1000, current value after last decay application
+    uint8 score;                     // 0-100, current value after last decay application
     uint40 lastUpdateTimestamp;      // for lazy decay calculation
     uint32 successfulRepayments;     // count, for 4.1 (decayed contribution derived from this + timestamp)
     uint32 liquidationCount;         // count, for 4.6 (permanent count; decayed *score* contribution separate)
@@ -448,6 +480,13 @@ struct ScoreState {
 
 mapping(address user => ScoreState) private _scores;
 ```
+
+`score` narrows from `uint16` to `uint8` (0–100 fits comfortably; the
+original 0–1000 needed `uint16`) — a genuine, if minor, storage-packing
+benefit of the rescale. Internal fixed-point accumulators for the
+fractional point deltas in Section 4 (e.g. tracked as tenths of a point)
+are an implementation detail of the follow-up Solidity milestone, not
+specified further here — see Section 3's note.
 
 Kept deliberately minimal — no per-event history array (would grow
 unbounded and be expensive to iterate); decay is computed from counts +
@@ -485,7 +524,7 @@ timestamps at read/update time, not by replaying history.
   configurable-parameters pattern
   (`docs/protocol-architecture.md`'s Risk Parameters section).
 - `emergencyResetScore(address user)` — `RISK_MANAGER_ROLE`-gated,
-  resets to 300 (Section 3's only reset path), emits a distinct event
+  resets to 30 (Section 3's only reset path), emits a distinct event
   so it's auditable as an exceptional governance action, not confused
   with normal score movement.
 
@@ -566,9 +605,9 @@ contract that talks to both, and only in the fixed order above.
 | Condition | Behavior |
 |---|---|
 | BitScore unavailable (e.g. `BitScoreManager` not yet set on `BitVLendingManager`, or the call reverts unexpectedly) | Falls back to base asset-level parameters — treated identically to a Tier 1 (Standard) user. Never blocks the underlying lending action; BitScore is an *enhancement* to parameters, not a gate on the action itself (that's CVI's job). |
-| Score corrupted (e.g. a stored value somehow outside 0–1000 — shouldn't be reachable given clamping, but defensively checked) | `getScore`/`getAdjustedParams` treat any out-of-range stored value as Tier 1/base parameters rather than reverting the underlying lending action or extrapolating an invalid tier. |
+| Score corrupted (e.g. a stored value somehow outside 0–100 — shouldn't be reachable given clamping, but defensively checked) | `getScore`/`getAdjustedParams` treat any out-of-range stored value as Tier 1/base parameters rather than reverting the underlying lending action or extrapolating an invalid tier. |
 | Score update fails (a `record*` call reverts) | The triggering action (repay/liquidate) that already completed is **not** rolled back by a scoring failure downstream of it — score-recording happens *after* the economically meaningful state change, in a way that doesn't let a scoring bug block real repayments/liquidations from succeeding. (Concretely: `record*` calls are the last step of the relevant `BitVLendingManager` function; if this needs a `try/catch` to fully decouple failure, that's a Section 13 open question for the Solidity milestone, not resolved here.) |
-| User has no score (first-ever interaction) | Treated as the starting score (300, Tier 1) — not as an error state, not as Tier 0. `ScoreState` in storage defaults to all-zero, which `getScore` must interpret as "uninitialized → 300," not as "score is literally 0" (Tier 0) — an explicit `initialized` flag or equivalent is needed in the real struct to distinguish these two cases (noted for the Solidity milestone). |
+| User has no score (first-ever interaction) | Treated as the starting score (30, Tier 1) — not as an error state, not as Tier 0. `ScoreState` in storage defaults to all-zero, which `getScore` must interpret as "uninitialized → 30," not as "score is literally 0" (Tier 0) — an explicit `initialized` flag or equivalent is needed in the real struct to distinguish these two cases (noted for the Solidity milestone). |
 | Score falls below minimum (0) | Already the floor — clamped, not an error. Tier 0 behavior (Section 6) applies; the user is not blocked from the protocol (that's still CVI's decision), only from any BitScore-driven improvement, and may see the protective LTV reduction. |
 | Cleanverse verification unavailable (validator unreachable/reverts) | Unrelated to BitScore's fail-safe behavior — this is `BitVComplianceGuard`'s existing responsibility (a `complianceVerify` revert propagates and blocks the action entirely, per Build 02.x's design) and happens *before* BitScore is ever reached. BitScore has no independent behavior to define here; noted for completeness since the brief asked. |
 
@@ -577,7 +616,7 @@ contract that talks to both, and only in the fixed order above.
 All tests below are for the future Solidity implementation — none exist
 yet, per this milestone's "do not write Solidity" scope.
 
-**Initial score**: new user's `getScore` returns 300 (Tier 1) with no
+**Initial score**: new user's `getScore` returns 30 (Tier 1) with no
 prior interaction.
 
 **Successful repayment**: full-close repayment after minimum duration
@@ -589,13 +628,13 @@ a position closed with very high accrued interest relative to principal
 gets a smaller (or zero) 4.2 bonus than one closed promptly, per the
 "proxy for active management" framing.
 
-**Liquidation**: a liquidation event applies the -100 (full) or -50
+**Liquidation**: a liquidation event applies the -10 (full) or -5
 (partial) penalty and increments `liquidationCount`; verify the
 liquidated user's score reflects this immediately after the triggering
 `liquidate()` call in the same transaction.
 
 **Bad debt**: an insolvent liquidation (the capped-seizure path in
-`BitVLendingManager.liquidate`) applies the -300 penalty, increments
+`BitVLendingManager.liquidate`) applies the -30 penalty, increments
 `badDebtCount`, and this penalty does not decay across a warped-forward
 timestamp in a test.
 
@@ -607,10 +646,10 @@ the penalty").
 
 **Score decay**: warp time forward past a decay window (e.g. 200 days
 for 4.1/4.2's 180-day window) with no further activity; verify score
-has decayed back toward 300 by the expected amount, while
+has decayed back toward 30 by the expected amount, while
 `liquidationCount`/`badDebtCount` (permanent counts) are unchanged.
 
-**Tier changes**: crossing a tier boundary (e.g. 499 → 500) via a
+**Tier changes**: crossing a tier boundary (e.g. 49 → 50) via a
 qualifying event emits `TierChanged`; crossing back down (decay or
 penalty) also emits it.
 

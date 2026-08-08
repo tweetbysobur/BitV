@@ -4,6 +4,55 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 4.1 — BitScore specification rescale to 0–100 (docs only)
+
+**Date:** 2026-08-08
+
+**Context:** Documentation-only update. No Solidity touched, no
+contracts modified — the deployed `BitScoreManager.sol` still runs on
+the original 0–1000 scale from Build 04.
+
+**Change:** `docs/bitscore-specification.md` rescaled from 0–1000 to
+0–100 throughout: starting score 300→30, tiers 250/500/750-point bands
+→ 25/50/75-point bands (Restricted 0–24, Standard 25–49, Established
+50–74, Trusted 75–100, as specified), max positive contribution 700→70,
+per-input caps 350/150/50→35/15/5, every per-event point delta
+rescaled by the same 1/10 factor (several becoming fractional — e.g.
++5→+0.5 for a full-close repayment — with a note that the follow-up
+Solidity milestone should represent these via fixed-point internal
+accounting to preserve exact relative weighting rather than losing
+precision to integer rounding), and the storage sketch's `score` field
+narrowed from `uint16` to `uint8` (0–100 fits comfortably). Formula
+mechanically unchanged: `30 + capped positive contributions - decayed
+liquidation penalties - permanent bad-debt penalties`, clamped
+`[0, 100]` — same shape as before, only the constants changed.
+
+**Explicitly unchanged**: every underlying architecture decision and
+scoring principle — the single consolidated decaying
+positive-contribution accumulator, the separately-decaying liquidation
+penalty, the permanent (never-decaying) bad-debt penalty, the CVI/
+BitScore separation, the fully-on-chain event-driven update model, the
+anti-gaming caps structure, the privacy model, the fail-safe behavior,
+and the interest-rate-quoted-only resolution. Section 7's LTV
+percentage-point adjustments and interest-rate-discount values are
+independent of the score scale and were left as-is.
+
+**`docs/bitscore-implementation.md`** got a status banner flagging that
+it still describes the pre-rescale (0–1000) deployed contracts, so a
+reader doesn't mistake its numbers for the current specification target.
+
+**Not done (per instruction):** no Solidity written, no contracts
+modified. The deployed `BitScoreManager.sol` and the current
+specification now disagree on scale until a follow-up implementation
+milestone reconciles them.
+
+**Next recommended milestone:** implement the 0–100 rescale in
+`BitScoreManager.sol` (and update `docs/bitscore-implementation.md` to
+match), most likely introducing an internal fixed-point representation
+for the fractional point deltas this rescale introduced.
+
+---
+
 ## Milestone 4 — BitScore implementation and validation (Build 04, part 2)
 
 **Date:** 2026-08-08

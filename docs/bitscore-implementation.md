@@ -1,8 +1,21 @@
 # BitScore Implementation (Build 04)
 
-Implements `docs/bitscore-specification.md`. This document records what
-was actually built, where implementation diverged from the spec's
-illustrative sketch (and why), and what remains a known limitation.
+**Scale note (post-implementation spec update):** `docs/bitscore-
+specification.md` was subsequently revised to a 0–100 score range
+(from the 0–1000 range this document and the deployed contracts still
+use). That revision was explicitly documentation-only — no Solidity was
+touched. Everything below accurately describes the contracts as they
+exist right now (0–1000, start 300, tiers at 250/500/750). Treat every
+score number in this document as **on the pre-rescale 0–1000 scale**
+until a follow-up implementation milestone updates
+`BitScoreManager.sol` (and this document) to match the new
+specification — see that document's own status banner for the
+authoritative current target.
+
+Implements `docs/bitscore-specification.md` (as it stood at
+implementation time). This document records what was actually built,
+where implementation diverged from the spec's illustrative sketch (and
+why), and what remains a known limitation.
 
 ## Contract architecture
 
