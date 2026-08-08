@@ -33,6 +33,17 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
  *   vault trusts" is a materially different decision from liquidity/
  *   limit management.
  *
+ * Build 06.1 adds two roles for the RWA collateral registry
+ * (docs/rwa-market-specification.md §13), reusing RISK_MANAGER_ROLE/
+ * PAUSER_ROLE directly rather than creating RWA-specific duplicates:
+ * - RWA_ADMIN_ROLE: registers/updates RWA assets, sets status
+ *   (Active/Frozen/Delisted), sets collateral caps and allowed debt
+ *   assets.
+ * - ORACLE_MANAGER_ROLE: wires/replaces an RWA asset's oracle and
+ *   staleness threshold, and attests price freshness. Kept separate
+ *   from RWA_ADMIN_ROLE for the same reason STRATEGY_MANAGER_ROLE is
+ *   kept separate from VAULT_MANAGER_ROLE above.
+ *
  * Users are never granted any of these roles.
  */
 contract BitVAccessManager is AccessControl {
@@ -42,6 +53,8 @@ contract BitVAccessManager is AccessControl {
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant VAULT_MANAGER_ROLE = keccak256("VAULT_MANAGER_ROLE");
     bytes32 public constant STRATEGY_MANAGER_ROLE = keccak256("STRATEGY_MANAGER_ROLE");
+    bytes32 public constant RWA_ADMIN_ROLE = keccak256("RWA_ADMIN_ROLE");
+    bytes32 public constant ORACLE_MANAGER_ROLE = keccak256("ORACLE_MANAGER_ROLE");
 
     constructor(address admin) {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -51,5 +64,7 @@ contract BitVAccessManager is AccessControl {
         _grantRole(PAUSER_ROLE, admin);
         _grantRole(VAULT_MANAGER_ROLE, admin);
         _grantRole(STRATEGY_MANAGER_ROLE, admin);
+        _grantRole(RWA_ADMIN_ROLE, admin);
+        _grantRole(ORACLE_MANAGER_ROLE, admin);
     }
 }

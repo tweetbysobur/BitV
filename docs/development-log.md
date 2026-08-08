@@ -4,6 +4,94 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 6.2 — RWA collateral registry implementation (Build 06.1)
+
+**Date:** 2026-08-08
+
+**Context:** Implements `docs/rwa-market-specification.md` (Build 06)
+exactly, per the approved architecture decision (B) — no redesign of
+the lending/liquidation engine. `BitVLendingManager` remains
+responsible for all collateral/debt accounting, LTV, health factor,
+borrowing, repayment, and liquidation.
+
+**Contracts created:**
+- `BitVRWACollateralRegistry.sol` — registration, asset status
+  (Active/Frozen/Delisted), oracle staleness tracking, collateral caps,
+  allowed-debt-asset restrictions. Owns exactly one responsibility:
+  whether a registered RWA asset's collateral counts toward NEW
+  borrowing capacity.
+- `IRWACollateralRegistry.sol` — narrow interface boundary, mirroring
+  `IBitScoreManager`'s role for `BitScoreManager`.
+- `RWAErrors.sol` — RWA-specific error library.
+
+**Contracts modified:** `BitVAccessManager.sol` (added
+`RWA_ADMIN_ROLE`, `ORACLE_MANAGER_ROLE`); `BitVLendingManager.sol` —
+added an optional, `try`/`catch`-wrapped, fail-safe registry
+integration: a new `depositCollateral` eligibility/cap check, a
+`debtAssetFilter`-aware `_accountData` overload that zeroes a
+registered-but-ineligible asset's LTV contribution (while leaving its
+health-factor/liquidation weighting untouched), and a simple aggregate
+`_totalCollateralByAsset` counter for cap enforcement. No existing
+function signature was narrowed; every change is additive and
+inert for assets never registered with the registry.
+
+**Key decisions, matching the approved spec exactly:** four asset
+states (Unregistered/Active/Frozen/Delisted, `Suspended` folded into
+`Frozen` + independent oracle-staleness tracking, per the task's
+explicit narrowing); frozen/delisted assets keep repayment/withdrawal/
+liquidation available while new deposits and new borrowing stop;
+oracle staleness tracked registry-side (`markPriceFresh` attestation)
+since `IPriceOracle` itself has no timestamp and was not modified; zero/
+stale/unavailable price always treated as ineligible, never favorable;
+the four-layer LTV bound (pool hard limit -> RWA asset hard LTV ->
+BitScore adjustment -> registry maximum) verified end to end; only two
+new roles (`RWA_ADMIN_ROLE`, `ORACLE_MANAGER_ROLE`), `RISK_MANAGER_ROLE`/
+`PAUSER_ROLE` reused.
+
+**One real design tension surfaced and documented, not silently
+resolved as a bug-fix**: the registry's own risk-parameter fields are
+validated against, but not used instead of, `BitVPoolManager.Pool`'s
+own values for live LTV/threshold weighting — avoiding a second,
+independently-drifting number feeding the same calculation. Flagged as
+a known limitation (see `docs/rwa-market-implementation.md`) rather
+than silently assumed solved.
+
+**Tests created:** `BaseRWATest.sol` fixture,
+`BitVRWACollateralRegistry.t.sol` (48 scenario tests: registry,
+collateral, oracle, borrowing, liquidation, compliance, security),
+`RWAHandler.sol` + `BitVRWAInvariant.t.sol` (10 fuzzed invariants, 256
+runs / 128,000 calls each, covering all nine properties the task
+specified plus cap-authorization).
+
+**One invariant assertion caught and corrected during its own review**
+(not a contract bug): an initial invariant asserted total collateral
+never exceeds the *current* cap, which fails once an admin legitimately
+lowers a cap below an already-deposited total (the same non-retroactive
+semantics `BitVPoolManager.Pool.supplyCap` already has) — corrected to
+assert the actually-guaranteed property: once at/above cap, no further
+deposit can push it higher.
+
+**Full Foundry suite — actually executed:** `forge test` after a clean
+`forge build`. Result: **10 suites, 181 tests, 181 passed, 0 failed, 0
+skipped** — the two new RWA suites (48 unit + 10 invariant) plus all
+eight pre-existing suites (123 tests, including the yield vault's 44
+unit + 8 invariant tests) unchanged, confirming no regression to the
+lending/compliance/BitScore/vault engine.
+
+**Not done (per instruction):** no new lending engine, no new
+liquidation engine, no governance, no cross-chain, no production CVA
+settlement, nothing deployed.
+
+**Known limitations:** registry LTV fields are validated-but-not-live-
+enforced independently of the pool's own values; collateral cap is
+deposit-time-enforced only, not continuously true after a retroactive
+lowering; a delisted/frozen asset whose oracle also fails entirely can
+become practically unliquidatable (inherited from the pre-existing,
+unmodified `_valueOf` zero-price revert, not introduced here) — all
+documented in full in `docs/rwa-market-implementation.md`.
+
+---
+
 ## Milestone 6.1 — RWA-backed market specification (Build 06)
 
 **Date:** 2026-08-08

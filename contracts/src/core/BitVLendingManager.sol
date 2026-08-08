@@ -15,6 +15,8 @@ import {PercentageMath} from "../libraries/PercentageMath.sol";
 import {ProtocolErrors} from "../libraries/ProtocolErrors.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 import {IBitScoreManager} from "../interfaces/IBitScoreManager.sol";
+import {IRWACollateralRegistry} from "../interfaces/IRWACollateralRegistry.sol";
+import {RWAErrors} from "../libraries/RWAErrors.sol";
 
 /**
  * @title BitVLendingManager
@@ -54,11 +56,27 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
     /// mandatory and unaffected regardless of this being set.
     IBitScoreManager public bitScoreManager;
 
+    /// @notice Optional (Build 06.1). address(0) = no RWA registry
+    /// wired — every collateral asset behaves exactly as it did before
+    /// this integration existed (docs/rwa-market-specification.md §2's
+    /// architecture decision: the registry only adds an upstream gate,
+    /// never new accounting). Assets never registered with the registry
+    /// are entirely unaffected regardless of this being set.
+    IRWACollateralRegistry public rwaRegistry;
+
     mapping(address user => mapping(address asset => uint256)) private _collateralBalance;
     mapping(address user => mapping(address asset => uint256)) private _scaledDebt;
     mapping(address user => mapping(address asset => uint40)) private _debtOpenedTimestamp;
     mapping(address user => EnumerableSet.AddressSet) private _userCollateralAssets;
     mapping(address user => EnumerableSet.AddressSet) private _userDebtAssets;
+
+    /// @notice Aggregate collateral held by this contract per asset,
+    /// across all users — needed only to enforce
+    /// IRWACollateralRegistry.getCollateralCap for registry-registered
+    /// assets (Build 06.1); kept as a simple running total alongside
+    /// the existing per-user accounting rather than a second
+    /// collateral-accounting system.
+    mapping(address asset => uint256) private _totalCollateralByAsset;
 
     event CollateralDeposited(address indexed user, address indexed asset, uint256 amount);
     event CollateralWithdrawn(address indexed user, address indexed asset, uint256 amount);
@@ -75,6 +93,7 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
     event CloseFactorUpdated(uint16 closeFactorBps);
     event BitScoreManagerSet(address indexed bitScoreManager);
     event BitScoreUpdateFailed(address indexed user, bytes32 indexed action);
+    event RwaRegistrySet(address indexed rwaRegistry);
 
     constructor(
         address complianceValidator,
@@ -103,6 +122,17 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         emit BitScoreManagerSet(bitScoreManager_);
     }
 
+    /// @notice Wires the RWA collateral registry (Build 06.1). Pass
+    /// address(0) to disable — assets never registered with the
+    /// registry are already unaffected regardless, so disabling this
+    /// only stops enforcing eligibility/cap checks for assets that
+    /// *were* registered, falling back to their pre-registry (ordinary
+    /// pool collateral) behavior.
+    function setRwaRegistry(address rwaRegistry_) external onlyRole(ACCESS_MANAGER.PROTOCOL_ADMIN_ROLE()) {
+        rwaRegistry = IRWACollateralRegistry(rwaRegistry_);
+        emit RwaRegistrySet(rwaRegistry_);
+    }
+
     // ── Collateral ───────────────────────────────────────────────────────
 
     function depositCollateral(address asset, uint256 amount) external nonReentrant {
@@ -113,9 +143,11 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         if (!pool.isActive) revert ProtocolErrors.PoolNotActive(asset);
         if (pool.isPaused) revert ProtocolErrors.PoolIsPaused(asset);
         if (!pool.isCollateralEnabled) revert ProtocolErrors.CollateralDisabled(asset);
+        _requireRwaEligibleForNewDeposit(asset, amount);
 
         _collateralBalance[msg.sender][asset] += amount;
         _userCollateralAssets[msg.sender].add(asset);
+        _totalCollateralByAsset[asset] += amount;
 
         IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
 
@@ -133,6 +165,7 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
 
         _collateralBalance[msg.sender][asset] = balance - amount;
         if (_collateralBalance[msg.sender][asset] == 0) _userCollateralAssets[msg.sender].remove(asset);
+        _totalCollateralByAsset[asset] -= amount;
 
         DataTypes.AccountData memory data = _accountData(msg.sender);
         if (data.totalDebtValue > 0 && data.healthFactorRay < WadRayMath.RAY) {
@@ -159,7 +192,7 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         _accrueAllUserAssets(msg.sender);
         POOL_MANAGER.accrueInterest(asset);
 
-        DataTypes.AccountData memory data = _accountData(msg.sender);
+        DataTypes.AccountData memory data = _accountData(msg.sender, asset);
         uint256 borrowValue = _valueOf(asset, amount, pool.priceOracle);
         uint256 effectiveAvailable = _effectiveAvailableBorrowValue(msg.sender, data);
         if (borrowValue > effectiveAvailable) {
@@ -285,6 +318,7 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
 
         _collateralBalance[user][collateralAsset] = userCollateral - seizeAmount;
         if (_collateralBalance[user][collateralAsset] == 0) _userCollateralAssets[user].remove(collateralAsset);
+        _totalCollateralByAsset[collateralAsset] -= seizeAmount;
 
         uint256 scaledRepay = actualRepay.rayDiv(POOL_MANAGER.getBorrowIndex(debtAsset));
         uint256 scaledDebt = _scaledDebt[user][debtAsset];
@@ -305,6 +339,29 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
 
     function getCollateralBalance(address user, address asset) external view returns (uint256) {
         return _collateralBalance[user][asset];
+    }
+
+    /// @notice Aggregate collateral held across all users for `asset` —
+    /// what IRWACollateralRegistry.getCollateralCap is enforced against
+    /// (Build 06.1). Meaningful for every asset, not just RWA-registered
+    /// ones, though the cap check itself only applies to registered
+    /// assets.
+    function getTotalCollateralByAsset(address asset) external view returns (uint256) {
+        return _totalCollateralByAsset[asset];
+    }
+
+    /// @notice Debt-asset-aware account data (Build 06.1) — the exact
+    /// figures `borrow(asset, ...)` uses internally, exposed for tests/
+    /// UI so a caller can preview available borrow capacity for a
+    /// specific target debt asset, taking any RWA allowed-debt-asset
+    /// restriction into account (the plain `getUserAccountData` does
+    /// not, since it has no specific debt asset in view).
+    function getUserAccountDataForBorrow(address user, address debtAsset)
+        external
+        view
+        returns (DataTypes.AccountData memory)
+    {
+        return _accountData(user, debtAsset);
     }
 
     function getCurrentDebt(address user, address asset) external view returns (uint256) {
@@ -409,10 +466,82 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
         }
     }
 
+    /// @dev Build 06.1's single choke point for "does this collateral
+    /// asset's value count toward NEW borrowing capacity right now."
+    /// Assets never registered with `rwaRegistry` always return `true`
+    /// here (unaffected, pre-existing behavior). Registered assets
+    /// return `true` only if the registry reports them eligible (Active
+    /// status, fresh nonzero oracle price) and, when `debtAssetFilter`
+    /// is nonzero, permitted against that specific debt asset. Any
+    /// registry call reverting is treated as `false` — fail-safe, never
+    /// favorable, matching `_effectiveAvailableBorrowValue`'s existing
+    /// BitScore fail-safe direction exactly.
+    function _rwaCountsTowardNewBorrowCapacity(address asset, address debtAssetFilter) internal view returns (bool) {
+        if (address(rwaRegistry) == address(0)) return true;
+
+        bool isRegistered;
+        try rwaRegistry.isRegisteredAsset(asset) returns (bool registered) {
+            isRegistered = registered;
+        } catch {
+            return true; // a basic view-getter reverting is not expected; see docs/rwa-market-implementation.md
+        }
+        if (!isRegistered) return true;
+
+        try rwaRegistry.isEligibleForNewActivity(asset) returns (bool eligible) {
+            if (!eligible) return false;
+        } catch {
+            return false;
+        }
+
+        if (debtAssetFilter != address(0)) {
+            try rwaRegistry.isDebtAssetAllowed(asset, debtAssetFilter) returns (bool allowed) {
+                if (!allowed) return false;
+            } catch {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// @dev Build 06.1: gates NEW collateral deposits for
+    /// registry-registered assets — never blocks withdrawal, repayment,
+    /// or liquidation, per docs/rwa-market-specification.md §12's
+    /// frozen-asset table. Unregistered assets are entirely unaffected.
+    function _requireRwaEligibleForNewDeposit(address asset, uint256 amount) internal view {
+        if (address(rwaRegistry) == address(0)) return;
+
+        bool isRegistered;
+        try rwaRegistry.isRegisteredAsset(asset) returns (bool registered) {
+            isRegistered = registered;
+        } catch {
+            return;
+        }
+        if (!isRegistered) return;
+
+        try rwaRegistry.isEligibleForNewActivity(asset) returns (bool eligible) {
+            if (!eligible) revert RWAErrors.AssetNotEligibleForDeposit(asset);
+        } catch {
+            revert RWAErrors.AssetNotEligibleForDeposit(asset);
+        }
+
+        uint256 cap = rwaRegistry.getCollateralCap(asset);
+        if (cap != 0 && _totalCollateralByAsset[asset] + amount > cap) {
+            revert RWAErrors.CollateralCapExceeded(asset, _totalCollateralByAsset[asset] + amount, cap);
+        }
+    }
+
     function _currentDebt(address user, address asset) internal view returns (uint256) {
         uint256 scaled = _scaledDebt[user][asset];
         if (scaled == 0) return 0;
         return scaled.rayMul(POOL_MANAGER.getBorrowIndex(asset));
+    }
+
+    /// @dev Zero-arg-equivalent wrapper for callers that don't need the
+    /// RWA allowed-debt-asset filter (withdraw/liquidate/views) — see
+    /// the two-argument overload's NatSpec.
+    function _accountData(address user) internal view returns (DataTypes.AccountData memory data) {
+        return _accountData(user, address(0));
     }
 
     /// @dev Aggregates collateral/debt value across every asset the user
@@ -421,7 +550,30 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
     /// calculation — documented limitation: such assets don't count
     /// toward collateral or debt value until a RISK_MANAGER_ROLE holder
     /// configures a price oracle for them.
-    function _accountData(address user) internal view returns (DataTypes.AccountData memory data) {
+    ///
+    /// Build 06.1: `debtAssetFilter` (pass `address(0)` for "no filter",
+    /// used by every caller except `borrow`) implements
+    /// docs/rwa-market-specification.md §9/§10's registry gate. For each
+    /// collateral asset that IS registered with `rwaRegistry`:
+    ///   - its value always counts toward `totalCollateralValue` and
+    ///     `weightedLiqThresholdValue` (health factor / liquidation stay
+    ///     accurate regardless of registry status — a frozen asset's
+    ///     liquidation must remain meaningful, per spec §12);
+    ///   - its value counts toward `weightedLtvValue`/
+    ///     `weightedMaxLtvValue` (i.e. NEW borrowing capacity) only if
+    ///     the registry reports it `isEligibleForNewActivity` AND (when
+    ///     `debtAssetFilter != address(0)`) `isDebtAssetAllowed` for
+    ///     that specific debt asset. Any registry call reverting is
+    ///     treated as "not eligible" — the same fail-safe direction
+    ///     BitScore's integration already established, never the
+    ///     favorable direction.
+    /// Assets never registered with the registry are entirely
+    /// unaffected by any of this — same behavior as before Build 06.1.
+    function _accountData(address user, address debtAssetFilter)
+        internal
+        view
+        returns (DataTypes.AccountData memory data)
+    {
         address[] memory collateralAssets = _userCollateralAssets[user].values();
         uint256 totalCollateralValue;
         uint256 weightedLtvValue;
@@ -440,9 +592,12 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
             if (!ok) continue; // zero-priced (misconfigured) asset — treated like "no oracle", not a DoS
 
             totalCollateralValue += value;
-            weightedLtvValue += value.percentMul(pool.ltvBps);
-            weightedMaxLtvValue += value.percentMul(pool.maxLtvWithScoreBps);
             weightedLiqThresholdValue += value.percentMul(pool.liquidationThresholdBps);
+
+            if (_rwaCountsTowardNewBorrowCapacity(asset, debtAssetFilter)) {
+                weightedLtvValue += value.percentMul(pool.ltvBps);
+                weightedMaxLtvValue += value.percentMul(pool.maxLtvWithScoreBps);
+            }
         }
 
         address[] memory debtAssets = _userDebtAssets[user].values();
