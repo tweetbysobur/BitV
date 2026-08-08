@@ -1,10 +1,13 @@
-# BitV Testnet Asset Strategy (Build 10)
+# BitV Testnet Asset Strategy (Build 10, decided in Build 11)
 
-No token address is fabricated in this document. As of this milestone,
-**no real, independently-verified Monad Testnet asset address is
-confirmed anywhere in this repository or by this audit** — this is a
-deployment blocker, stated plainly, not worked around by inventing an
-address.
+No token address is fabricated in this document. As of Build 10, no
+real, independently-verified Monad Testnet asset address was confirmed
+anywhere in this repository. In Build 11, the BitV team explicitly
+decided **Path A** below (BitV-deployed test tokens) rather than
+continue waiting on a real asset — see
+`contracts/src/testing/BitVTestToken.sol` and
+`contracts/script/DeployTestnetAssets.s.sol`, not yet broadcast to
+Monad Testnet.
 
 ## What the MVP smoke test actually needs
 
