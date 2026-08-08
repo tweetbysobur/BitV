@@ -2,18 +2,22 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {BitVPoolManager} from "../../src/core/BitVPoolManager.sol";
+import {ComplianceGuardHarness} from "../mocks/ComplianceGuardHarness.sol";
 import {ComplianceErrors} from "../../src/libraries/ComplianceErrors.sol";
 import {IAPassComplianceValidator} from "../../src/interfaces/external/IAPassComplianceValidator.sol";
 import {MockComplianceValidator} from "../mocks/MockComplianceValidator.sol";
 
-/// @notice Unit tests for the compliance-hook wiring (BitVComplianceGuard),
-/// exercised through BitVPoolManager as a representative protected
-/// contract. MockComplianceValidator is a test-only stand-in — see its
-/// NatSpec — not a claim about Cleanverse's real behavior.
+/// @notice Unit tests for the compliance-hook wiring (BitVComplianceGuard)
+/// in isolation, via ComplianceGuardHarness — a minimal test-only
+/// contract so these tests don't depend on BitVPoolManager's economics.
+/// BitVPoolManager/BitVLendingManager's own compliance-gating is covered
+/// by their dedicated test files (BitVPoolManager.t.sol,
+/// BitVLendingManager.t.sol). MockComplianceValidator is a test-only
+/// stand-in — see its NatSpec — not a claim about Cleanverse's real
+/// behavior.
 contract BitVComplianceGuardTest is Test {
     MockComplianceValidator internal validator;
-    BitVPoolManager internal pool;
+    ComplianceGuardHarness internal pool;
 
     address internal owner = makeAddr("owner");
     address internal verifiedUser = makeAddr("verifiedUser");
@@ -29,7 +33,7 @@ contract BitVComplianceGuardTest is Test {
 
     function setUp() public {
         validator = new MockComplianceValidator();
-        pool = new BitVPoolManager(address(validator), owner);
+        pool = new ComplianceGuardHarness(address(validator), owner);
     }
 
     function _baseRule() internal pure returns (IAPassComplianceValidator.RuleV2 memory) {
@@ -138,7 +142,7 @@ contract BitVComplianceGuardTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(ComplianceErrors.ComplianceCheckFailed.selector, address(pool), unverifiedUser)
         );
-        pool.addLiquidity(address(0xBEEF), 1 ether);
+        pool.protectedAction();
     }
 
     /// A compliant user reaches the NotImplemented stub, proving the
@@ -151,7 +155,7 @@ contract BitVComplianceGuardTest is Test {
 
         vm.prank(verifiedUser);
         vm.expectRevert(ComplianceErrors.NotImplemented.selector);
-        pool.addLiquidity(address(0xBEEF), 1 ether);
+        pool.protectedAction();
     }
 
     /// 9. Validator address cannot be arbitrarily changed: it's set once
@@ -161,7 +165,7 @@ contract BitVComplianceGuardTest is Test {
         assertEq(address(pool.COMPLIANCE_VALIDATOR()), address(validator));
 
         vm.expectRevert(ComplianceErrors.ZeroValidatorAddress.selector);
-        new BitVPoolManager(address(0), owner);
+        new ComplianceGuardHarness(address(0), owner);
     }
 
     /// Rule-management wrappers (guide §5.2/§6) are owner-gated.

@@ -4,6 +4,152 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 3 — Core pool and lending architecture (Build 03)
+
+**Date:** 2026-08-08
+
+**Context:** First economic-logic milestone. Cleanverse's compliance
+*architecture* (Build 02.x) is treated as fixed/confirmed and was not
+modified except where required to add pool/lending economics on top of
+it — `IAPassComplianceValidator` and `BitVComplianceGuard` are unchanged.
+Per this milestone's explicit constraint, the validator address stays
+deployment-time configuration (never hardcoded), and nothing was deployed
+anywhere.
+
+**Contracts created:**
+
+- `contracts/src/libraries/WadRayMath.sol`, `PercentageMath.sol` — ray
+  and bps fixed-point math.
+- `contracts/src/libraries/DataTypes.sol` — `Pool` and `AccountData`
+  structs.
+- `contracts/src/libraries/ProtocolErrors.sol` — protocol-level custom
+  errors, kept separate from `ComplianceErrors` (Cleanverse-specific).
+- `contracts/src/interfaces/IPriceOracle.sol`, `IInterestRateModel.sol`
+  — clean, swappable boundaries.
+- `contracts/src/oracles/StaticPriceOracle.sol` — admin-set price
+  source, explicitly documented as non-production.
+- `contracts/src/oracles/KinkedInterestRateModel.sol` — two-slope
+  interest model with a documented (not deployed) suggested starting
+  parameter set.
+- `contracts/src/access/BitVRoleConsumer.sol` — shared `onlyRole`
+  modifier checking a central `BitVAccessManager`, kept deliberately
+  separate from `BitVComplianceGuard`'s Cleanverse-specific `Ownable`.
+- `contracts/script/Deploy.s.sol` — deployment-configuration template
+  (not executed) requiring `CLEANVERSE_VALIDATOR_ADDRESS` as an env var
+  with no fallback.
+
+**Contracts modified:**
+
+- `BitVAccessManager` — replaced `GOVERNANCE_ROLE`/`PAUSER_ROLE` with
+  four roles: `PROTOCOL_ADMIN_ROLE`, `RISK_MANAGER_ROLE`,
+  `POOL_MANAGER_ROLE`, `PAUSER_ROLE`.
+- `BitVTreasury` — switched from its own standalone `AccessControl` to
+  `BitVRoleConsumer` (shared roles), added `receiveFee` and kept
+  role-gated `withdraw`.
+- `BitVPoolManager` — full rewrite from Build 02's compliance-only stub:
+  real pool creation/config, ray-scaled supply accounting, `deposit`/
+  `withdraw` (with the exact-scaled-balance max-withdraw fix applied
+  from the start), `borrowFromPool`/`repayToPool` restricted to a
+  single registered `lendingManager`, linear interest accrual with
+  reserve-factor-to-treasury routing, full view surface (`totalSupplied`,
+  `availableLiquidity`, `totalBorrowed`, `utilizationRay`, etc.).
+- `BitVLendingManager` — full rewrite: cross-margin collateral/debt
+  accounting via `EnumerableSet`, `depositCollateral`/
+  `withdrawCollateral` (health-factor-gated), `borrow` (LTV-gated),
+  `repay`, `liquidate` (close-factor-capped partial liquidation,
+  liquidation bonus, insolvency-capped seizure), `getUserAccountData`/
+  `getHealthFactor` views.
+
+**Not modified (per instruction, unless docs proved them wrong — they
+didn't):** `IAPassComplianceValidator.sol`, `BitVComplianceGuard.sol`,
+`BitScoreManager.sol`, `BitVVaultManager.sol`.
+
+**Pool architecture:** one `BitVPoolManager` contract, one pool per
+asset, ray-scaled real on-chain balances (no off-chain/synthetic
+accounting anywhere) — see `docs/protocol-architecture.md` for full
+detail.
+
+**Lending architecture:** cross-margin (multi-collateral,
+multi-borrowed-asset per user), debt tracked in `BitVLendingManager`
+using the same borrow index `BitVPoolManager` maintains per pool.
+
+**Collateral model:** any pool flagged `isCollateralEnabled` can back a
+loan; value computed via each asset's configured `IPriceOracle`, weighted
+by per-asset `ltvBps`/`liquidationThresholdBps`.
+
+**Interest model:** `KinkedInterestRateModel`, base rate + two-slope
+utilization component, explicitly separated per the requirement; linear
+(not continuously compounded) accrual, documented as a deliberate
+determinism/auditability tradeoff.
+
+**Liquidation model:** health-factor threshold at `1 ray`;
+`closeFactorBps` (default 50%) caps a single liquidation call;
+liquidation bonus computed via oracle prices; insolvent positions handled
+by capping seizure at available collateral and scaling the repay down
+proportionally (documented bad-debt tradeoff, not hidden).
+
+**Compliance integration point:** unchanged mechanism
+(`BitVComplianceGuard._requireCompliance`), now called at the start of
+every pool/lending protected action, including the liquidator (not the
+liquidated user) in `liquidate`.
+
+**Security controls:** `ReentrancyGuard` on every state-changing
+function, checks-effects-interactions ordering, role-gated admin
+functions, index-based (not `balanceOf`-based) supply accounting to
+avoid donation attacks, exact-scaled max-withdraw (avoiding the earlier
+dust bug's return), documented (not hidden) insolvency/bad-debt handling,
+a clean swappable oracle interface with no production price source
+assumed. Full detail and rationale in `docs/protocol-architecture.md`'s
+Security Assumptions section.
+
+**Tests created:** `BitVComplianceGuard.t.sol` (reworked to use a new
+`ComplianceGuardHarness` instead of the now-real `BitVPoolManager`),
+`BitVPoolManager.t.sol` (deposit, withdraw incl. max-withdraw exactness,
+pool accounting, pause/unpause, compliance accept/reject, unauthorized
+admin action rejection, a real reentrancy attack via
+`MockReentrantERC20`), `BitVLendingManager.t.sol` (collateral deposit/
+withdraw incl. health-factor-breach rejection, borrow incl. LTV-breach
+rejection, repay incl. overpay capping, interest accrual, compliance
+rejection), `BitVLiquidation.t.sol` (healthy position cannot be
+liquidated, unhealthy position can be, partial liquidation respects
+close factor, liquidation bonus amount verified exactly, debt reduction
+verified exactly, no-outstanding-debt rejection, repeated liquidation on
+a still-unhealthy position). New shared fixture `BaseProtocolTest.sol`
+and mocks `MockERC20.sol`, `MockReentrantERC20.sol`.
+
+**COMPILED:** yes — every contract, script, and test file compiles clean
+via `solc@0.8.24` (Foundry still unavailable in this sandbox; direct
+release-asset download and `api.github.com` access were both attempted
+this milestone and both blocked — `api.github.com` specifically returns
+this session's GitHub-scoping error, not a generic network block, and a
+guessed release-asset filename 404'd rather than resolving, so the exact
+correct asset name would need to be sourced through GitHub's normal web
+UI, not scriptable from here). Only pre-existing, expected
+`state mutability can be restricted to view` warnings on
+`BitVVaultManager`'s and the compliance harness's still-unimplemented
+stub functions.
+
+**TESTS EXECUTED: NOT EXECUTED.** `forge test` has not been run — solc
+compilation is not a substitute and is not reported as such. All test
+assertions above describe what the test *code* checks, not confirmed
+pass/fail outcomes.
+
+**Remaining Cleanverse deployment blockers (unchanged from Build 02.6):**
+validator's deployed address (any network), explicit Monad Testnet
+support, chain ID, validator-registration signing algorithm, CVI
+issuance/verification APIs — see `docs/cleanverse-integration.md`'s
+"Deployment Readiness" section.
+
+**Next recommended milestone:** get Foundry running somewhere to
+actually execute the full test suite (this milestone's tests plus
+Build 02's compliance tests) and get real pass/fail results before
+trusting any of this economically. Separately and independently: BitScore
+design (now that risk-parameter plumbing exists to eventually feed from
+it), yield vaults, or continuing to chase Cleanverse's deployment
+information — none of which this milestone started, per its scope.
+
+---
+
 ## Milestone 2.6 — Cleanverse deployment readiness audit (Build 02.6)
 
 **Date:** 2026-08-08
