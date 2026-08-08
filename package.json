@@ -1,16 +1,38 @@
 {
-  "name": "forge-std",
-  "version": "1.16.2",
-  "description": "Forge Standard Library is a collection of helpful contracts and libraries for use with Forge and Foundry.",
-  "homepage": "https://book.getfoundry.sh/forge/forge-std",
-  "bugs": "https://github.com/foundry-rs/forge-std/issues",
-  "license": "(Apache-2.0 OR MIT)",
-  "author": "Contributors to Forge Standard Library",
-  "files": [
-    "src/**/*"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/foundry-rs/forge-std.git"
+  "name": "bitv",
+  "version": "0.0.1",
+  "private": true,
+  "description": "BitV — The Trust Layer for DeFi. Identity-native DeFi on Monad, built on Cleanverse.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.6.0",
+    "tailwindcss": "^3.4.0",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.5.0",
+    "class-variance-authority": "^0.7.0",
+    "framer-motion": "^11.11.0",
+    "lucide-react": "^0.454.0",
+    "wagmi": "^2.12.0",
+    "viem": "^2.21.0",
+    "@rainbow-me/rainbowkit": "^2.2.0",
+    "@tanstack/react-query": "^5.59.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "eslint": "^9.12.0",
+    "eslint-config-next": "^15.1.0"
   }
 }
