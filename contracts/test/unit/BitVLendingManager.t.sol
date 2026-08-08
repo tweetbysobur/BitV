@@ -156,4 +156,38 @@ contract BitVLendingManagerTest is BaseProtocolTest {
         vm.stopPrank();
     }
 
+    // ── Build 03.5 review fixes ──────────────────────────────────────────
+
+    /// Found during the Build 03.5 economic review: depositCollateral
+    /// previously checked isActive/isCollateralEnabled but not isPaused,
+    /// so pausing a collateral pool didn't actually stop new collateral
+    /// deposits into it.
+    function test_DepositCollateral_RespectsPoolPause() public {
+        vm.prank(admin);
+        poolManager.setPoolPaused(address(collateralAsset), true);
+
+        vm.startPrank(borrower);
+        collateralAsset.approve(address(lendingManager), 10e18);
+        vm.expectRevert(
+            abi.encodeWithSelector(ProtocolErrors.PoolIsPaused.selector, address(collateralAsset))
+        );
+        lendingManager.depositCollateral(address(collateralAsset), 10e18);
+        vm.stopPrank();
+    }
+
+    /// Found during the Build 03.5 economic review: a zero-priced asset
+    /// (oracle set, price explicitly 0) previously valued at silently
+    /// $0 instead of reverting, for whichever asset the caller is
+    /// directly acting on.
+    function test_Borrow_ZeroPricedDebtAsset_RevertsLoudly() public {
+        _supplyLiquidity(10_000e18);
+        _depositCollateral(borrower, 10e18);
+
+        vm.prank(admin);
+        oracle.setPrice(address(debtAsset), 0, 18);
+
+        vm.prank(borrower);
+        vm.expectRevert(abi.encodeWithSelector(ProtocolErrors.ZeroPrice.selector, address(debtAsset)));
+        lendingManager.borrow(address(debtAsset), 1_000e18);
+    }
 }

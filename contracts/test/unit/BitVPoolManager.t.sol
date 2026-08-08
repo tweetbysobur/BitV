@@ -130,20 +130,24 @@ contract BitVPoolManagerTest is BaseProtocolTest {
     // ── Access control ───────────────────────────────────────────────────
 
     function test_UnauthorizedAdminAction_Rejected() public {
+        // Compute the expected role hash *before* pranking — vm.prank
+        // only affects the single next external call, and
+        // accessManager.PAUSER_ROLE() is itself an external call. Doing
+        // it after vm.prank() consumes the prank before the actual
+        // protected call runs, making the test assert against the wrong
+        // caller (a real bug this milestone's Foundry run caught).
+        bytes32 pauserRole = accessManager.PAUSER_ROLE();
+
         vm.prank(supplier); // not PAUSER_ROLE
-        vm.expectRevert(
-            abi.encodeWithSelector(ProtocolErrors.Unauthorized.selector, supplier, accessManager.PAUSER_ROLE())
-        );
+        vm.expectRevert(abi.encodeWithSelector(ProtocolErrors.Unauthorized.selector, supplier, pauserRole));
         poolManager.setPoolPaused(address(debtAsset), true);
     }
 
     function test_CreatePool_UnauthorizedCaller_Rejected() public {
+        bytes32 adminRole = accessManager.PROTOCOL_ADMIN_ROLE(); // see note above
+
         vm.prank(supplier);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ProtocolErrors.Unauthorized.selector, supplier, accessManager.PROTOCOL_ADMIN_ROLE()
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(ProtocolErrors.Unauthorized.selector, supplier, adminRole));
         poolManager.createPool(
             address(0xCAFE),
             BitVPoolManager.PoolConfigParams({

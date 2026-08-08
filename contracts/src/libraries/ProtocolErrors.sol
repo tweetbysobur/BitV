@@ -22,4 +22,5 @@ library ProtocolErrors {
     error CallerNotLendingManager();
     error InvalidRiskParams();
     error Unauthorized(address caller, bytes32 role);
+    error ZeroPrice(address asset);
 }

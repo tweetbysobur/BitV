@@ -8,3 +8,8 @@ build/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Foundry build artifacts
+contracts/cache/
+contracts/out/
+contracts/broadcast/

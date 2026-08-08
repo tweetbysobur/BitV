@@ -91,6 +91,7 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
 
         DataTypes.Pool memory pool = POOL_MANAGER.getPool(asset);
         if (!pool.isActive) revert ProtocolErrors.PoolNotActive(asset);
+        if (pool.isPaused) revert ProtocolErrors.PoolIsPaused(asset);
         if (!pool.isCollateralEnabled) revert ProtocolErrors.CollateralDisabled(asset);
 
         _collateralBalance[msg.sender][asset] += amount;
@@ -287,7 +288,9 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
             DataTypes.Pool memory pool = POOL_MANAGER.getPool(asset);
             if (pool.priceOracle == address(0)) continue;
 
-            uint256 value = _valueOf(asset, balance, pool.priceOracle);
+            (uint256 value, bool ok) = _tryValueOf(asset, balance, pool.priceOracle);
+            if (!ok) continue; // zero-priced (misconfigured) asset — treated like "no oracle", not a DoS
+
             totalCollateralValue += value;
             weightedLtvValue += value.percentMul(pool.ltvBps);
             weightedLiqThresholdValue += value.percentMul(pool.liquidationThresholdBps);
@@ -304,7 +307,10 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
             DataTypes.Pool memory pool = POOL_MANAGER.getPool(asset);
             if (pool.priceOracle == address(0)) continue;
 
-            totalDebtValue += _valueOf(asset, debt, pool.priceOracle);
+            (uint256 value, bool ok) = _tryValueOf(asset, debt, pool.priceOracle);
+            if (!ok) continue;
+
+            totalDebtValue += value;
         }
 
         data.totalCollateralValue = totalCollateralValue;
@@ -319,16 +325,39 @@ contract BitVLendingManager is BitVComplianceGuard, BitVRoleConsumer, Reentrancy
     /// @dev Normalizes `amount` of `asset` (in the asset's own decimals)
     /// to an 18-decimal "value" unit using `oracle`'s price, so different
     /// assets' values are directly comparable/summable. Requires the
-    /// oracle's `decimals` to be <= 18.
+    /// oracle's `decimals` to be <= 18. Used by action-specific paths
+    /// (borrow's requested-amount check, liquidation's repay/seize
+    /// conversions) where the asset in question is the one the caller is
+    /// directly acting on right now, so failing loudly on a zero price is
+    /// correct — see `_tryValueOf` for the non-reverting variant used
+    /// while aggregating a user's whole position.
     function _valueOf(address asset, uint256 amount, address oracle) internal view returns (uint256) {
+        (uint256 value, bool ok) = _tryValueOf(asset, amount, oracle);
+        if (!ok) revert ProtocolErrors.ZeroPrice(asset);
+        return value;
+    }
+
+    /// @dev Non-reverting version of `_valueOf`, for `_accountData`'s
+    /// aggregation loops. A zero price (oracle misconfigured, distinct
+    /// from no oracle being set at all) is treated the same as "no
+    /// oracle configured" — skipped rather than reverting — so one
+    /// mispriced asset can't deny-of-service every action for every user
+    /// who happens to hold it. This is a real, documented risk in the
+    /// debt-asset case specifically (a zero-priced debt asset drops out
+    /// of `totalDebtValue`, understating risk) — see
+    /// docs/economic-engine-review.md.
+    function _tryValueOf(address asset, uint256 amount, address oracle) internal view returns (uint256 value, bool ok) {
         (uint256 price, uint8 priceDecimals) = IPriceOracle(oracle).getPrice(asset);
+        if (price == 0) return (0, false);
         uint8 assetDecimals = IERC20Metadata(asset).decimals();
-        return (amount * price * (10 ** (18 - priceDecimals))) / (10 ** assetDecimals);
+        value = (amount * price * (10 ** (18 - priceDecimals))) / (10 ** assetDecimals);
+        ok = true;
     }
 
     /// @dev Inverse of `_valueOf`.
     function _amountFromValue(address asset, uint256 valueE18, address oracle) internal view returns (uint256) {
         (uint256 price, uint8 priceDecimals) = IPriceOracle(oracle).getPrice(asset);
+        if (price == 0) revert ProtocolErrors.ZeroPrice(asset);
         uint8 assetDecimals = IERC20Metadata(asset).decimals();
         return (valueE18 * (10 ** assetDecimals)) / (price * (10 ** (18 - priceDecimals)));
     }

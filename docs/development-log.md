@@ -4,6 +4,94 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 3.5 — Economic engine validation (Build 03.5)
+
+**Date:** 2026-08-08
+
+**Context:** First milestone with Foundry actually available. Got
+`forge 1.0.0` installed in this sandbox via `raw.githubusercontent.com`
+(reachable, unlike `foundry.paradigm.xyz`, `api.github.com`, and
+`binaries.soliditylang.org`, all still blocked) — foundryup's install
+script and raw solc-bin release binaries are both served from that
+domain. `solc 0.8.24` was placed manually into `~/.svm/0.8.24/` since
+`svm`'s own downloader hits the blocked `binaries.soliditylang.org`.
+Full detail, including the exact commands, in
+`docs/economic-engine-review.md`.
+
+**Foundry: AVAILABLE.**
+
+**Compilation: PASS**, after one real fix — `BitVPoolManager.accrueInterest`
+hit solc's "stack too deep" codegen limit under the legacy pipeline;
+fixed by enabling `via_ir = true` in `foundry.toml` (the standard fix,
+not a function rewrite). `solc` also pinned to `0.8.24` explicitly in
+`foundry.toml` to match every contract's pragma and avoid re-triggering
+an auto-selected-newer-version download.
+
+**Full `forge test -vvv` and all four requested `--match-contract`
+filters run.** Two real test-logic bugs found and fixed (both were
+`vm.prank` scope bugs — a role-hash lookup between `vm.prank` and the
+actual call consumed the prank — not contract bugs); after the fix, all
+**45 tests across 5 suites pass**: `BitVComplianceGuardTest` (11),
+`BitVPoolManagerTest` (12), `BitVLendingManagerTest` (12, incl. 2 new
+regression tests below), `BitVLiquidationTest` (7), and a new
+`BitVInvariantTest` (3, see Task 6).
+
+**Economic/security review (Tasks 4-5) found two real issues, both
+fixed with regression tests, not just documented:**
+
+1. `BitVLendingManager.depositCollateral` didn't check pool pause state
+   at all — pausing a collateral pool via `BitVPoolManager.setPoolPaused`
+   didn't actually stop new collateral deposits into it. Fixed.
+   `withdrawCollateral` deliberately left unpaused-by-design (users
+   should always be able to exit).
+2. A zero-priced asset (oracle explicitly set to price `0`, distinct
+   from no oracle configured at all) was silently valued at `$0`
+   instead of reverting — could mask real debt or wipe out real
+   collateral in a health-factor calculation with no signal anything
+   was wrong. Fixed with a new `ZeroPrice` error, split into a
+   reverting `_valueOf` (for the specific asset an action directly
+   touches) and a non-reverting `_tryValueOf` (for `_accountData`'s
+   aggregation loops, so one misconfigured asset can't deny-of-service
+   every action for every user holding it) — the split itself has a
+   documented residual risk (a zero-priced *debt* asset now drops out
+   of `totalDebtValue`, understating risk, rather than the safer-but-
+   DoS-prone alternative of reverting) — see
+   `docs/economic-engine-review.md`.
+
+**No other contract-logic bugs found.** Full review notes (rounding
+symmetry as a non-blocking limitation, insolvent-liquidation and
+multi-asset cross-margin paths implemented-but-untested, no
+stale-price protection, decimal-mismatch handling reviewed but not
+exercised beyond 18/18) are in `docs/economic-engine-review.md` — not
+repeated here in full.
+
+**Invariants (Task 6):** new `contracts/test/invariant/Handler.sol` +
+`BitVInvariant.t.sol`. Three fuzzed invariants, all passing at 256
+runs × 500 calls: borrowed liquidity never exceeds supplied,
+`availableLiquidity + totalBorrowed >= totalSupplied` always, and a
+never-compliant wallet stays rejected regardless of accumulated fuzzed
+state. Several invariants named in the brief were deliberately left as
+scenario tests instead of fuzzed ones, with reasoning documented in
+`docs/economic-engine-review.md` rather than silently skipped.
+
+**Explicitly not claimed:** BitV is not production-ready, the
+contracts are not audited, Cleanverse is not confirmed deployed on
+Monad (unchanged from Build 02.6), and passing tests are not treated as
+proof the protocol is secure.
+
+**Not started (per instruction):** BitScore, yield vaults, RWA markets,
+any new protocol feature, any deployment.
+
+**Next recommended milestone:** address the documented residual risks
+if/when a subsequent milestone actually needs them fixed (rounding
+direction hardening, insolvent-liquidation test coverage, multi-asset
+cross-margin test coverage) — none required this milestone, since it
+was scoped to validation, not feature work. Separately: BitScore design
+or continuing to chase Cleanverse's deployment information, neither
+started here.
+
+---
+
 ## Milestone 3 — Core pool and lending architecture (Build 03)
 
 **Date:** 2026-08-08
