@@ -17,8 +17,7 @@ contract BitVRWACollateralRegistryTest is BaseRWATest {
             liquidationBonusBps: 500,
             collateralCap: 0,
             oracle: address(oracle),
-            maxOracleStalenessSeconds: STALENESS_WINDOW,
-            isCVA: false
+            maxOracleStalenessSeconds: STALENESS_WINDOW
         });
     }
 

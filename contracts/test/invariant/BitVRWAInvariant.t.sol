@@ -118,8 +118,7 @@ contract BitVRWAInvariantTest is BaseRWATest {
                 liquidationBonusBps: 0,
                 collateralCap: 0,
                 oracle: address(oracle),
-                maxOracleStalenessSeconds: 1,
-                isCVA: false
+                maxOracleStalenessSeconds: 1
             })
         );
     }

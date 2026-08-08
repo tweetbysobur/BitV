@@ -7,6 +7,7 @@ import {BitVPoolManager} from "./BitVPoolManager.sol";
 import {DataTypes} from "../libraries/DataTypes.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 import {IRWACollateralRegistry} from "../interfaces/IRWACollateralRegistry.sol";
+import {IBitVCVAAdapter} from "../interfaces/IBitVCVAAdapter.sol";
 import {RWAErrors} from "../libraries/RWAErrors.sol";
 
 /**
@@ -26,12 +27,22 @@ import {RWAErrors} from "../libraries/RWAErrors.sol";
  * only gates whether that pool's collateral value is eligible for new
  * activity right now.
  *
- * Cleanverse discipline (per docs/rwa-market-specification.md §3/§5/§7):
+ * Cleanverse discipline (per docs/rwa-market-specification.md §3/§5/§7,
+ * updated per Build 07.1 / docs/cva-integration-specification.md §7):
  * no CVA contract address, API, or verification field is invented here.
- * `AssetConfig.isCVA` is purely admin-attested metadata — Cleanverse
- * exposes no on-chain "is this token a currently-valid CVA" query this
- * contract could call instead, so this is the controlled registry
- * boundary the specification calls for rather than a fabrication.
+ * CVA status is a two-stage model, per the approved CVA specification:
+ * `adminAttestedCVA` (an RWA_ADMIN_ROLE claim, stored here) and
+ * `isCVAInterfaceVerified` (a *live* query to `cvaAdapter`, never
+ * cached here — see `isCVAInterfaceVerified`'s NatSpec for why). This
+ * registry never calls Cleanverse's `IATokenPolicy` directly — the
+ * adapter is the sole boundary for that, per Build 07.1's architecture.
+ * Neither flag, alone or combined, is ever treated as official
+ * Cleanverse approval — see `BitVCVAAdapter.isRecognizedCVA`'s NatSpec.
+ * CVA status is additive metadata only in this milestone: it changes
+ * nothing about `isEligibleForNewActivity`'s existing eligibility gate
+ * or any other existing RWA requirement (§7/§8 of the CVA
+ * specification — "CVA status must never bypass existing risk
+ * controls").
  */
 contract BitVRWACollateralRegistry is BitVRoleConsumer, IRWACollateralRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -66,7 +77,9 @@ contract BitVRWACollateralRegistry is BitVRoleConsumer, IRWACollateralRegistry {
         address oracle; // IPriceOracle — may differ from the pool's own configured oracle
         uint32 maxOracleStalenessSeconds;
         uint40 lastPriceVerifiedTimestamp;
-        bool isCVA; // admin-attested metadata only, see contract NatSpec and spec §5/§7
+        bool adminAttestedCVA; // RWA_ADMIN_ROLE's claim only — see contract NatSpec and
+            // docs/cva-integration-specification.md §7; independent of, and never
+            // combined with, on-chain interface verification inside this struct
     }
 
     struct AssetConfigParams {
@@ -77,10 +90,15 @@ contract BitVRWACollateralRegistry is BitVRoleConsumer, IRWACollateralRegistry {
         uint256 collateralCap;
         address oracle;
         uint32 maxOracleStalenessSeconds;
-        bool isCVA;
     }
 
     BitVPoolManager public immutable POOL_MANAGER;
+
+    /// @notice Optional (Build 07.1). address(0) = no CVA adapter wired
+    /// — every CVA-status query fails safe to "not verified" (see
+    /// `isCVAInterfaceVerified`), never to "verified." Assets never
+    /// admin-attested as CVA are entirely unaffected regardless.
+    IBitVCVAAdapter public cvaAdapter;
 
     mapping(address asset => AssetConfig) private _assets;
     mapping(address asset => EnumerableSet.AddressSet) private _allowedDebtAssets;
@@ -92,6 +110,8 @@ contract BitVRWACollateralRegistry is BitVRoleConsumer, IRWACollateralRegistry {
     event OracleConfigSet(address indexed asset, address indexed oracle, uint32 maxStalenessSeconds);
     event PriceMarkedFresh(address indexed asset, uint256 price, uint8 priceDecimals);
     event AllowedDebtAssetSet(address indexed asset, address indexed debtAsset, bool allowed);
+    event CVAAdapterSet(address indexed cvaAdapter);
+    event CVAAttestationSet(address indexed asset, bool attested);
 
     constructor(address accessManager, address poolManager) BitVRoleConsumer(accessManager) {
         if (poolManager == address(0)) revert RWAErrors.ZeroAddress();
@@ -128,7 +148,7 @@ contract BitVRWACollateralRegistry is BitVRoleConsumer, IRWACollateralRegistry {
             oracle: params.oracle,
             maxOracleStalenessSeconds: params.maxOracleStalenessSeconds,
             lastPriceVerifiedTimestamp: 0,
-            isCVA: params.isCVA
+            adminAttestedCVA: false
         });
 
         emit AssetRegistered(asset, params.oracle, params.ltvBps);
@@ -162,9 +182,33 @@ contract BitVRWACollateralRegistry is BitVRoleConsumer, IRWACollateralRegistry {
         cfg.collateralCap = params.collateralCap;
         cfg.oracle = params.oracle;
         cfg.maxOracleStalenessSeconds = params.maxOracleStalenessSeconds;
-        cfg.isCVA = params.isCVA;
 
         emit AssetConfigUpdated(asset);
+    }
+
+    /// @notice Sets or clears RWA_ADMIN_ROLE's administrative attestation
+    /// that `asset` is intended to be a CVA. This is a claim only — it
+    /// is never, by itself or combined with anything else in this
+    /// contract, equivalent to Cleanverse's own approval of `asset` as a
+    /// CVA (docs/cva-integration-specification.md §7). Independent of
+    /// `isCVAInterfaceVerified` — setting this does not require, and is
+    /// not affected by, the adapter's on-chain verification result.
+    function setCVAAttestation(address asset, bool attested) external onlyRole(ACCESS_MANAGER.RWA_ADMIN_ROLE()) {
+        AssetConfig storage cfg = _assets[asset];
+        if (cfg.status == AssetStatus.Unregistered) revert RWAErrors.AssetNotRegistered(asset);
+        cfg.adminAttestedCVA = attested;
+        emit CVAAttestationSet(asset, attested);
+    }
+
+    /// @notice Wires the CVA adapter (Build 07.1). Pass address(0) to
+    /// disable — every CVA-status query then fails safe to "not
+    /// verified" for every asset, never "verified." Reusing
+    /// RWA_ADMIN_ROLE here (not a new role): this is registry-internal
+    /// wiring in the same administrative domain as every other function
+    /// in this section.
+    function setCVAAdapter(address cvaAdapter_) external onlyRole(ACCESS_MANAGER.RWA_ADMIN_ROLE()) {
+        cvaAdapter = IBitVCVAAdapter(cvaAdapter_);
+        emit CVAAdapterSet(cvaAdapter_);
     }
 
     /// @notice Transitions `asset`'s status. Valid transitions:
@@ -298,6 +342,51 @@ contract BitVRWACollateralRegistry is BitVRoleConsumer, IRWACollateralRegistry {
 
     function getAllowedDebtAssets(address asset) external view returns (address[] memory) {
         return _allowedDebtAssets[asset].values();
+    }
+
+    // ── CVA status (Build 07.1) ─────────────────────────────────────────
+    // The registry never calls Cleanverse's IATokenPolicy directly —
+    // every question below is answered either from this contract's own
+    // adminAttestedCVA storage or by asking cvaAdapter, never by this
+    // registry calling into a CVA policy contract itself
+    // (docs/cva-integration-specification.md §7/§14's architecture
+    // decision D, "the registry should ask the adapter").
+
+    /// @notice RWA_ADMIN_ROLE's stored attestation only — see
+    /// AssetConfig.adminAttestedCVA's NatSpec. Never sufficient by
+    /// itself to imply the asset is a verified CVA.
+    function isCVAAdminAttested(address asset) external view returns (bool) {
+        return _assets[asset].adminAttestedCVA;
+    }
+
+    /// @notice Live query to `cvaAdapter` — deliberately never cached
+    /// in this contract's own storage, so there is exactly one source
+    /// of truth for on-chain interface verification (the adapter
+    /// itself) rather than a registry-side copy that could drift from
+    /// it. Fails safe to `false` if no adapter is wired or the adapter
+    /// call reverts — never to `true`.
+    function isCVAInterfaceVerified(address asset) public view returns (bool) {
+        if (address(cvaAdapter) == address(0)) return false;
+        try cvaAdapter.isRecognizedCVA(asset) returns (bool verified) {
+            return verified;
+        } catch {
+            return false;
+        }
+    }
+
+    /// @notice True only when BOTH the admin attestation and the
+    /// adapter's live on-chain-interface verification agree — the two
+    /// independent signals docs/cva-integration-specification.md §7
+    /// requires. Even `true` here is explicitly NOT equivalent to
+    /// Cleanverse's own approval of `asset` as a CVA (see
+    /// `BitVCVAAdapter.isRecognizedCVA`'s NatSpec) — it means "an admin
+    /// claims this is a CVA, and a contract this asset points to
+    /// responds the way a CVA policy contract is expected to," nothing
+    /// more. This value is informational metadata only in this
+    /// milestone: it does not affect `isEligibleForNewActivity` or any
+    /// other existing eligibility/risk check.
+    function isCVAFullyRecognized(address asset) external view returns (bool) {
+        return _assets[asset].adminAttestedCVA && isCVAInterfaceVerified(asset);
     }
 
     // ── Internal ─────────────────────────────────────────────────────

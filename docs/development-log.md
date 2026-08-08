@@ -4,6 +4,87 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 7.2 — CVA adapter + registry extension implementation (Build 07.1)
+
+**Date:** 2026-08-08
+
+**Context:** Implements `docs/cva-integration-specification.md`'s
+architecture decision (D) exactly. Baseline confirmed before starting:
+181/181 tests, 10/10 RWA invariants, 8/8 vault invariants, 8/8 lending
+invariants, all actually executed.
+
+**Contracts created:**
+- `BitVCVAAdapter.sol` — the sole BitV component that calls Cleanverse
+  CVA-specific interfaces. Owns a per-token policy-contract mapping and
+  an interface-verification flag, set via `setPolicyContract`/
+  `verifyInterface` (both `RWA_ADMIN_ROLE`-gated).
+- `IBitVCVAAdapter.sol` — narrow, replaceable interface boundary.
+- `IATokenPolicy.sol` — partial transcription of Cleanverse's CVA
+  policy interface: only `getRulesV2` (with a disclosed
+  signature-by-analogy) is declared; `canTransfer` and the rule-
+  management functions are deliberately NOT declared, since their full
+  signatures aren't confirmed by the approved specification.
+- `CVAErrors.sol` — CVA-specific error library.
+
+**Contracts modified:** `BitVRWACollateralRegistry.sol` — replaced the
+bare `bool isCVA` field with the approved two-stage model:
+`adminAttestedCVA` (stored, admin-set) and `isCVAInterfaceVerified`
+(a live, uncached query to the adapter). Added `setCVAAttestation`,
+`setCVAAdapter`, `isCVAAdminAttested`, `isCVAInterfaceVerified`,
+`isCVAFullyRecognized` — all additive; every existing eligibility
+function (`isEligibleForNewActivity`, `isDebtAssetAllowed`,
+`getCollateralCap`) and every existing risk/status control is
+byte-for-byte unchanged. No new role: every CVA administrative function
+reuses `RWA_ADMIN_ROLE`.
+
+**Key architectural decision, matching the approved spec exactly:**
+`canTransfer` is never called anywhere in this codebase —
+`previewTransfer` exists as the required interface boundary but always
+reverts `TransferValidationUnconfirmed`, since Cleanverse's `canTransfer`
+return type/visibility/rejection mechanism are not confirmed. The one
+call this implementation does make (`getRulesV2`, via `staticcall`, as
+an interface-shape probe) is explicitly disclosed as an inference by
+analogy to the CVI validator's identically-shaped, fully-confirmed
+`getRulesV2` — not an independently confirmed CVA-specific fact.
+
+**CVA status never bypasses existing controls** — verified directly:
+`isCVAFullyRecognized` returning `true` has zero effect on
+`isEligibleForNewActivity`, deposits, borrowing, LTV, BitScore
+adjustment, or liquidation. A frozen or delisted asset stays ineligible
+regardless of CVA recognition; a never-CVI-compliant wallet stays
+rejected regardless of CVA recognition.
+
+**Tests created:** `MockCVAPolicy`/`MockRevertingCVAPolicy`/
+`MockEmptyContract` mocks, `BitVCVAAdapter.t.sol` (30 scenario tests:
+policy config, interface verification, transfer-validation boundary,
+registry CVA-status model, CVA-never-bypasses-controls, CVI+CVA
+interaction, security), `CVAHandler.sol` + `BitVCVAInvariant.t.sol` (7
+fuzzed invariants, 256 runs / 128,000 calls each, covering all six
+required properties plus attestation-authorization).
+
+**Full Foundry suite — actually executed:** `forge test --summary`
+after a clean `forge build`. Result: **12 suites, 218 tests, 218
+passed, 0 failed, 0 skipped** — the two new CVA suites (30 unit + 7
+invariant) plus all ten pre-existing suites (181 tests, including the
+RWA registry's 48 unit + 10 invariant and the yield vault's 44 unit +
+8 invariant) unchanged, confirming no regression anywhere in the
+protocol.
+
+**Not done (per instruction):** no CVA issuance, minting, redemption,
+settlement, recovery, cross-chain settlement, governance, or
+deployment.
+
+**Known limitations:** admin-attested CVA spoofing remains structurally
+possible (demonstrated directly by a passing test, not hidden);
+`getRulesV2`'s signature for the CVA policy interface is a disclosed
+inference, not an independently confirmed fact; `canTransfer`/transfer-
+time validation is entirely unimplemented; CVA freeze/revoke handling
+is unimplemented since the underlying Cleanverse mechanism is
+unconfirmed to exist — all documented in full in
+`docs/cva-integration-implementation.md`.
+
+---
+
 ## Milestone 7.1 — CVA integration specification (Build 07)
 
 **Date:** 2026-08-08
