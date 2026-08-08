@@ -1,0 +1,24 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["lib"]
+fs_permissions = [{ access = "read-write", path = "./" }]
+optimizer = true
+optimizer_runs = 200
+# BitVPoolManager.accrueInterest hits solc's "stack too deep" codegen
+# limit under the legacy pipeline (too many local variables live at
+# once). via-ir is the standard fix rather than artificially splitting
+# the function just to dodge a compiler limitation.
+via_ir = true
+# Pinned to match every contract's `pragma solidity ^0.8.24` exactly.
+# Needed in this sandbox because auto-selecting the newest matching
+# solc (0.8.28) requires downloading it from binaries.soliditylang.org,
+# which is network-blocked here; 0.8.24 was fetched via the
+# raw.githubusercontent.com solc-bin mirror instead (see
+# docs/economic-engine-review.md).
+solc = "0.8.24"
+
+[profile.lint]
+lint_on_build = false

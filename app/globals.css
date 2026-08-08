@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * BitV design tokens.
+ * Primary: black. Accent: orange. Institutional, high-contrast, no gradients.
+ * See /docs/design-tokens.md for the source of truth on values and usage.
+ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 5%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 5%;
+
+    --border: 0 0% 88%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
+
+    --primary: 0 0% 5%;
+    --primary-foreground: 0 0% 100%;
+
+    /* BitV orange accent */
+    --accent: 24 95% 53%;
+    --accent-foreground: 0 0% 5%;
+
+    /* Reserved for error/ineligible states (e.g. compliance status) */
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Status colors for risk/health indicators (healthy/warning) —
+       kept minimal and semantic, not decorative, per design-tokens.md. */
+    --success: 142 71% 35%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 5%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 0 0% 5%;
+    --foreground: 0 0% 98%;
+
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 98%;
+
+    --border: 0 0% 18%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 63%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 5%;
+
+    --accent: 24 95% 53%;
+    --accent-foreground: 0 0% 5%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 65% 45%;
+    --success-foreground: 0 0% 5%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 5%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+}
