@@ -4,6 +4,57 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 7.3 — Cleanverse CVA interface verification (Build 07.2)
+
+**Date:** 2026-08-08
+
+**Context:** Documentation and verification only — no Solidity,
+TypeScript, or test file was modified. `BitVCVAAdapter`,
+`IBitVCVAAdapter`, `IATokenPolicy`, `BitVRWACollateralRegistry`, and
+every test file remain byte-for-byte unchanged from Build 07.1.
+Baseline reconfirmed before starting: 218/218 tests, 7/7 CVA
+invariants, 10/10 RWA invariants, 8/8 vault invariants, 8/8 lending
+invariants.
+
+**Deliverable:** `docs/cleanverse-cva-verification.md` — re-verifies
+every Cleanverse detail Build 07.1's implementation relies on against
+the same two official PDFs already transcribed in
+`docs/cleanverse-integration.md`/`docs/cva-integration-specification.md`.
+**No new Cleanverse source material was available this milestone** —
+this is a re-verification pass against existing transcription, not new
+research.
+
+**Finding: every previously-`UNCONFIRMED` item remains genuinely
+unconfirmed** — no gap was an oversight in prior transcription.
+Specifically re-confirmed absent from both guides: any on-chain "is
+this token an approved CVA" query; any CVA freeze/revoke/suspend/
+disable/de-register mechanism; `canTransfer`'s return type/visibility/
+mutability/rejection behavior; the CVI validator registration signing
+algorithm (beyond the bare hash rule); any Cleanverse contract address
+on any network; explicit Monad/Monad Testnet support or chain ID.
+Re-confirmed present and unchanged: `RuleV2`'s exact struct and AND/OR/
+bitwise-AND semantics; the CVA guide's function *names* (`canTransfer`,
+`getRulesV2`, rule-management functions); the "automatic compliance"
+mode (BitV should not call `canTransfer` directly); the CVA
+registration (`atoken/register`) EIP-191 `personal_sign` signing scheme
+— kept explicitly separate from the CVI validator's own, differently
+(and less completely) specified signing rule, per instruction not to
+merge the two.
+
+**Implementation decision (§14 of the new doc)**: BitV cannot yet
+safely implement real `canTransfer` validation, cannot fully verify CVA
+status on-chain (only interface-shape, already implemented), cannot
+implement freeze/revoke handling (no mechanism confirmed to exist),
+and cannot safely deploy on Monad Testnet. **Build 07.3 should wait for
+new, official Cleanverse material** — this milestone does not fabricate
+any of the missing pieces to unblock further implementation.
+
+**Not done (per instruction):** no Solidity, TypeScript, or test file
+modified; no new Cleanverse functionality invented; no address
+invented.
+
+---
+
 ## Milestone 7.2 — CVA adapter + registry extension implementation (Build 07.1)
 
 **Date:** 2026-08-08
