@@ -42,3 +42,26 @@ tests/          Test suite (empty — no logic to test yet)
 
 See `docs/cleanverse-integration-todo.md` for what's still required before
 Cleanverse functionality can be implemented for real.
+
+## Monad Testnet configuration (verified)
+
+Verified 2026-08-08. This sandbox could not directly fetch
+`docs.monad.xyz` (blocked by network egress policy), so these values were
+cross-checked via web search against multiple independent
+registries/providers (chainlist.org, chainid.network, Alchemy, thirdweb) that
+mirror Monad's official published network parameters. Re-confirm directly
+against `docs.monad.xyz/developer-essentials/network-information` when this
+environment has direct access, before mainnet cutover.
+
+| Parameter | Value |
+|---|---|
+| Chain ID | `10143` (`0x279f`) |
+| Network name | Monad Testnet |
+| Native currency | MON, 18 decimals |
+| RPC URL | Not hardcoded — see `NEXT_PUBLIC_MONAD_TESTNET_RPC_URL` in `.env.example`; public default `https://testnet-rpc.monad.xyz` is rate-limited and for reference only |
+| Block explorer | Monad Explorer — `https://testnet.monadexplorer.com` |
+
+Implemented in `config/chains.ts` via `viem`'s `defineChain`. The RPC URL is
+read only from the env var at runtime (no hardcoded fallback in code), so
+`next build` never needs a real RPC endpoint to succeed, and each
+environment can point at its own non-rate-limited RPC.

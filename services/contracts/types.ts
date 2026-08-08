@@ -12,3 +12,17 @@ export interface DeployedContract {
   address: Address;
   chainId: number;
 }
+
+/**
+ * Names this registry will hold entries for once each contract is designed
+ * and deployed. Listing the key set (with no addresses/ABIs attached yet)
+ * lets `contractAddresses` be typed as this milestone's contracts land,
+ * without the shape changing later.
+ */
+export type BitVContractName =
+  | "AccessManager"
+  | "PoolManager"
+  | "LendingManager"
+  | "VaultManager"
+  | "BitScoreManager"
+  | "Treasury";

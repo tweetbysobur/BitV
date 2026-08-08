@@ -9,6 +9,12 @@ export const metadata: Metadata = {
   description: `${siteConfig.name} is an identity-native DeFi protocol on ${siteConfig.network}, built on ${siteConfig.infrastructure}.`,
 };
 
+// Web3Provider constructs the RainbowKit/Wagmi config at render time, which
+// requires a real NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID. Forcing dynamic
+// rendering defers that to request time instead of build time, so `next
+// build` doesn't require secrets to be present in the build environment.
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${poppins.variable} ${montserrat.variable}`}>
