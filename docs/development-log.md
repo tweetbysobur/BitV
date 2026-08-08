@@ -4,6 +4,72 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 5.1 — Permissioned yield vault specification (Build 05, part 1)
+
+**Date:** 2026-08-08
+
+**Context:** Documentation-only. No Solidity written or modified — the
+existing `BitVVaultManager.sol` remains the Build-01.5-era compliance
+stub it has always been (every function reverts `NotImplemented` after
+a compliance check). This milestone designs what should replace it.
+
+**Deliverable:** `docs/yield-vault-specification.md` — full specification
+covering purpose, user flow, architecture, ERC-4626 decision, asset
+model, strategy architecture, Cleanverse/CVI/CVA integration, share
+accounting, fees, access control, emergency controls, risk controls,
+pool relationship, BitV component integration, security model, test
+plan, RWA extensibility, and open questions.
+
+**Key decisions:**
+- **ERC-4626** chosen as the accounting standard (OpenZeppelin's
+  `ERC4626`), not a custom share system — gets audited inflation/rounding
+  math for free; BitV-specific logic (compliance, limits, pause,
+  strategy routing) layered on top via the standard's hooks.
+- **CVI is the sole vault-eligibility layer** — BitScore is explicitly
+  **not** made a dependency; the spec found no strong reason to
+  integrate it (BitScore is scoped to lending risk, and a yield vault
+  has no borrowing/credit-risk dimension for it to price).
+- **Share transfers disabled entirely for the MVP** — rather than
+  gating `transfer`/`transferFrom` behind a second compliance
+  checkpoint, the transfer path is removed altogether, structurally
+  closing the "verified depositor transfers shares to an unverified
+  wallet" bypass the task flagged.
+- **Vault liquidity kept completely separate from lending pools** for
+  the MVP (option A of two evaluated) — avoids coupling an
+  already-validated lending engine's liquidity/withdrawal behavior to
+  a new, unproven vault/strategy system. Pool-as-strategy (option B)
+  is left as a possible future direction requiring its own
+  integration-invariant test suite.
+- **CVA integration**: evaluated for deposits/assets/yield/withdrawals;
+  not confirmed for any of them on the current deployment target — no
+  vault should be documented as "CVA-backed" until Cleanverse confirms
+  a specific token's CVA registration.
+- **Roles**: exactly two new roles added to the plan —
+  `VAULT_MANAGER_ROLE`, `STRATEGY_MANAGER_ROLE` — reusing
+  `PROTOCOL_ADMIN_ROLE`/`PAUSER_ROLE` where sufficient, per "do not
+  create unnecessary roles."
+- **Fees**: performance-fee-only for the MVP (capped, `RISK_MANAGER_ROLE`-
+  gated, flows to `BitVTreasury`); no management or withdrawal fee —
+  no demonstrated need for either yet.
+- **Withdrawal pause handled carefully**: normal withdrawal can be
+  paused if the strategy is failing, but a separate, always-available
+  emergency-withdrawal path (pro-rata share of whatever the vault can
+  actually account for) is never blocked by that pause — users cannot
+  be permanently locked out of funds by a strategy failure.
+- **Test strategy vs. production strategy** explicitly distinguished —
+  the MVP's placeholder strategy is documented as generating no real
+  yield; a real strategy is out of scope pending its own review.
+
+**Not done (per instruction):** no Solidity written, no contracts
+modified, nothing deployed. `BitVVaultManager.sol` is untouched.
+
+**Next recommended milestone:** implement `BitVYieldVault`/
+`IBitVVaultStrategy`/`TestYieldStrategy` per this specification, wire
+the two new roles into `BitVAccessManager`, and build the Foundry test
+suite per §19 of the specification.
+
+---
+
 ## Milestone 4.2 — BitScore scale reconciliation (0–1000 → 0–100, Solidity)
 
 **Date:** 2026-08-08
