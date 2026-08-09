@@ -36,5 +36,14 @@ export const yieldVaults: readonly YieldVaultRegistryEntry[] = [];
 export const rwaAssets: readonly DeployedContract[] = [];
 
 /** Debt/collateral pool assets the dashboard should query
- * BitVPoolManager about. Empty until real pools exist. */
-export const poolAssets: readonly DeployedContract[] = [];
+ * BitVPoolManager about. Empty until real pools exist.
+ *
+ * BVTEST (BitVTestToken) — a clearly-labeled, no-real-value testnet
+ * asset (see docs/testnet-assets.md), with a pool created via
+ * contracts/script/DeployTestnetAssets.s.sol and priced by
+ * StaticPriceOracle (testnet-only, non-production — see
+ * docs/oracle-deployment-plan.md). Never present this as a real asset
+ * or its price as a real market price. */
+export const poolAssets: readonly DeployedContract[] = [
+  { address: "0xD031f2F863dd481a869814CaE6813b17590C3B45", chainId: 10143 },
+];
