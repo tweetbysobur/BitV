@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { parseUnits } from "viem";
 import type { Address } from "viem";
+import { useReadContract } from "wagmi";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useContractAddress } from "@/hooks/useContractAddress";
@@ -14,6 +15,7 @@ import {
   useBorrow,
   useRepay,
 } from "@/hooks/useLendingActions";
+import { bitVPoolManagerAbi } from "@/services/contracts/abis";
 import { poolAssets } from "@/services/contracts/addresses";
 import { formatTokenAmount } from "@/lib/format";
 
@@ -41,10 +43,18 @@ export function CollateralBorrowPanel({
   actionsDisabled?: boolean;
 }) {
   const lendingManagerAddress = useContractAddress("LendingManager");
+  const poolManagerAddress = useContractAddress("PoolManager");
   const asset = poolAssets[0] as { address: Address; chainId: number } | undefined;
   const decimals = 18;
 
   const { balance, allowance, refetch: refetchAllowance } = useSupplyAllowance(asset?.address, lendingManagerAddress);
+  const { data: availableLiquidity, refetch: refetchLiquidity } = useReadContract({
+    address: poolManagerAddress,
+    abi: bitVPoolManagerAbi,
+    functionName: "availableLiquidity",
+    args: asset ? [asset.address] : undefined,
+    query: { enabled: Boolean(poolManagerAddress && asset) },
+  });
   const { state: approveState, txHash: approveHash, errorMessage: approveError, approve, reset: resetApprove } = useApproveLendingManager();
   const { state: depositState, txHash: depositHash, errorMessage: depositError, send: depositCollateral, reset: resetDeposit } = useDepositCollateral();
   const { state: withdrawState, txHash: withdrawHash, errorMessage: withdrawError, send: withdrawCollateral, reset: resetWithdraw } = useWithdrawCollateral();
@@ -67,6 +77,8 @@ export function CollateralBorrowPanel({
 
   const needsApproval = parsedCollateral !== undefined && (allowance === undefined || allowance < parsedCollateral);
   const collateralExceedsBalance = parsedCollateral !== undefined && balance !== undefined && parsedCollateral > balance;
+  const borrowExceedsLiquidity =
+    parsedBorrow !== undefined && availableLiquidity !== undefined && parsedBorrow > availableLiquidity;
   const collateralBusy = actionsDisabled || approveState === "pending" || approveState === "confirming" || depositState === "pending" || depositState === "confirming";
   const uncollateralBusy = actionsDisabled || withdrawState === "pending" || withdrawState === "confirming";
   const borrowBusy = actionsDisabled || borrowState === "pending" || borrowState === "confirming";
@@ -74,9 +86,13 @@ export function CollateralBorrowPanel({
   const cviHelperText = actionsDisabled
     ? "CVI required — complete Cleanverse verification before using this market."
     : undefined;
+  const borrowHelperText = borrowExceedsLiquidity
+    ? `Amount exceeds available pool liquidity (${formatTokenAmount(availableLiquidity, decimals, { maxFractionDigits: 4 })} BVTEST). Someone needs to supply liquidity via "1. Supply liquidity" before this much can be borrowed.`
+    : cviHelperText;
 
   function afterConfirmed() {
     refetchAllowance();
+    refetchLiquidity();
     onPositionChanged?.();
   }
 
@@ -158,8 +174,8 @@ export function CollateralBorrowPanel({
           buttonLabel="Borrow"
           buttonVariant="primary"
           isLoading={borrowBusy}
-          disabled={!parsedBorrow || borrowBusy}
-          helperText={cviHelperText}
+          disabled={!parsedBorrow || borrowExceedsLiquidity || borrowBusy}
+          helperText={borrowHelperText}
           onSubmit={() => {
             if (!parsedBorrow) return;
             borrow({ lendingManagerAddress, assetAddress: asset.address, amount: parsedBorrow });

@@ -2,6 +2,8 @@
  * Read-only ABI fragment for BitVLendingManager — transcribed from
  * contracts/src/core/BitVLendingManager.sol.
  */
+import { protocolErrorsAbi } from "./protocolErrors";
+
 const accountDataOutput = {
   name: "",
   type: "tuple",
@@ -16,6 +18,7 @@ const accountDataOutput = {
 } as const;
 
 export const bitVLendingManagerAbi = [
+  ...protocolErrorsAbi,
   {
     type: "function",
     name: "getCollateralBalance",

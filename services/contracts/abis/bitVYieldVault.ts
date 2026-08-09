@@ -4,7 +4,10 @@
  * contracts/src/core/BitVYieldVault.sol and the OpenZeppelin ERC4626/
  * ERC20 base it inherits.
  */
+import { protocolErrorsAbi } from "./protocolErrors";
+
 export const bitVYieldVaultAbi = [
+  ...protocolErrorsAbi,
   { type: "function", name: "asset", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
   {
     type: "function",

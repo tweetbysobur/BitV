@@ -9,7 +9,10 @@
  * directly (BitVPoolManager.claimReserve only accepts msg.sender ==
  * TREASURY, so the frontend never calls it on PoolManager itself).
  */
+import { protocolErrorsAbi } from "./protocolErrors";
+
 export const bitVPoolManagerAbi = [
+  ...protocolErrorsAbi,
   {
     type: "function",
     name: "getPool",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { parseUnits } from "viem";
 import type { Address } from "viem";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -29,7 +29,13 @@ const STATUS_LABEL: Record<string, string> = {
  * flow; withdraw is a single call. Every step waits for its own
  * transaction receipt before advancing — never shows "success" from a
  * submitted-but-unconfirmed transaction. */
-export function SupplyWithdrawPanel({ actionsDisabled }: { actionsDisabled?: boolean } = {}) {
+export function SupplyWithdrawPanel({
+  actionsDisabled,
+  onPositionChanged,
+}: {
+  actionsDisabled?: boolean;
+  onPositionChanged?: () => void;
+} = {}) {
   const poolManagerAddress = useContractAddress("PoolManager");
   const asset = poolAssets[0] as { address: Address; chainId: number } | undefined;
   const decimals = 18;
@@ -41,6 +47,13 @@ export function SupplyWithdrawPanel({ actionsDisabled }: { actionsDisabled?: boo
 
   const [supplyAmount, setSupplyAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+
+  useEffect(() => {
+    if (depositState === "success" || withdrawState === "success") {
+      onPositionChanged?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [depositState, withdrawState]);
 
   if (!asset || !poolManagerAddress) {
     return null;
