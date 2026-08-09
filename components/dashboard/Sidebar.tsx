@@ -59,7 +59,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 export function Sidebar() {
   return (
     <aside className="hidden w-60 shrink-0 border-r border-border p-4 lg:flex lg:flex-col lg:gap-8">
-      <Link href="/dashboard/overview">
+      <Link href="/" aria-label="BitV home">
         <BitVLockup />
       </Link>
       <NavLinks />

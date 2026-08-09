@@ -4,8 +4,11 @@ import { cn } from "@/lib/utils";
 export type ButtonVariant = "primary" | "secondary" | "tertiary" | "destructive";
 
 const variantClasses: Record<ButtonVariant, string> = {
+  // The brand's primary CTA color is the orange accent, not black — see
+  // docs/design-system.md. "Launch App" and other primary actions
+  // should read as BitV orange, not blend into a black/white button.
   primary:
-    "bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40",
+    "bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-40",
   secondary:
     "border border-border text-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent",
   tertiary:

@@ -26,7 +26,7 @@ export function Topbar() {
         >
           {mobileNavOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
         </button>
-        <Link href="/dashboard/overview" className="flex items-center gap-2 lg:hidden">
+        <Link href="/" aria-label="BitV home" className="flex items-center gap-2 lg:hidden">
           <BitVMark className="h-6 w-6" />
           <span className="font-heading text-base font-semibold">BitV</span>
         </Link>
