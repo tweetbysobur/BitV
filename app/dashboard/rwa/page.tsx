@@ -1,9 +1,13 @@
 "use client";
 
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DataStateView } from "@/components/dashboard/DataStateView";
 import { RWAStatusCard } from "@/components/dashboard/RWAStatusCard";
+import { CVIStatus } from "@/components/dashboard/CVIStatus";
 import { useRWAAssets, type RWAAssetRow } from "@/hooks/useRWAAssets";
 import { useCVAStatus } from "@/hooks/useCVAStatus";
+import { useContractAddress } from "@/hooks/useContractAddress";
 
 function RWAAssetCardWithCVA({ row }: { row: RWAAssetRow }) {
   const cva = useCVAStatus(row.assetAddress);
@@ -13,10 +17,34 @@ function RWAAssetCardWithCVA({ row }: { row: RWAAssetRow }) {
 
 export default function RWAPage() {
   const rwaAssets = useRWAAssets();
+  const lendingManagerAddress = useContractAddress("LendingManager");
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="font-heading text-2xl font-semibold">RWA Collateral</h1>
+      <div>
+        <h1 className="font-heading text-2xl font-semibold">RWA Collateral</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          This registry only decides eligibility, LTV, and caps for RWA assets — it does not hold your position.
+          Supply, borrow, repay, and withdraw against RWA collateral from the{" "}
+          <Link href="/dashboard/lending" className="underline">
+            Lending page
+          </Link>
+          .
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cleanverse CVI</CardTitle>
+          <CardDescription>
+            Eligibility to post any collateral (including RWA) and borrow, checked against BitVLendingManager
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CVIStatus poolAddress={lendingManagerAddress} />
+        </CardContent>
+      </Card>
+
       <DataStateView
         state={rwaAssets}
         loadingLabel="Reading RWA registry"

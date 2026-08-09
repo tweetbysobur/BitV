@@ -1,8 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
-import { describeRWAStatusForNewActivity, type RWAAssetStatus } from "@/lib/rwa";
+import { describeRWAStatusForNewActivity, describeIneligibilityReason, type RWAAssetStatus } from "@/lib/rwa";
 import { deriveCVALabel, CVA_RECOGNITION_DISCLAIMER } from "@/lib/cva";
-import { formatBps } from "@/lib/format";
+import { formatBps, formatTokenAmount } from "@/lib/format";
 import type { RWAAssetRow } from "@/hooks/useRWAAssets";
 
 const STATUS_TONE: Record<RWAAssetStatus, BadgeTone> = {
@@ -31,6 +31,16 @@ export function RWAStatusCard({
       ? undefined
       : deriveCVALabel({ adminAttestedCVA: row.adminAttestedCVA, interfaceVerified: cvaInterfaceVerified });
 
+  const ineligibleReason = row.eligibleForNewActivity
+    ? undefined
+    : describeIneligibilityReason({
+        status: row.status,
+        lastPriceVerifiedTimestamp: row.lastPriceVerifiedTimestamp,
+        maxOracleStalenessSeconds: row.maxOracleStalenessSeconds,
+        oraclePrice: row.oraclePrice,
+        nowSeconds: Math.floor(Date.now() / 1000),
+      });
+
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2">
@@ -44,9 +54,34 @@ export function RWAStatusCard({
           <dd className="tabular-nums">{formatBps(row.ltvBps)}</dd>
           <dt className="text-muted-foreground">Liquidation threshold</dt>
           <dd className="tabular-nums">{formatBps(row.liquidationThresholdBps)}</dd>
+          <dt className="text-muted-foreground">Collateral cap</dt>
+          <dd className="tabular-nums">
+            {row.collateralCap === 0n ? "Uncapped" : formatTokenAmount(row.collateralCap, 18)}
+          </dd>
           <dt className="text-muted-foreground">Borrowing eligibility</dt>
           <dd>{row.eligibleForNewActivity ? "Eligible for new borrowing" : "Not eligible for new borrowing"}</dd>
         </dl>
+        {ineligibleReason ? <p className="text-xs text-destructive">{ineligibleReason}</p> : null}
+        <div className="border-t border-border pt-3">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Oracle</p>
+          <div className="flex flex-col gap-1">
+            <span className="tabular-nums">
+              Price:{" "}
+              {row.oraclePrice !== undefined && row.oraclePriceDecimals !== undefined
+                ? `$${formatTokenAmount(row.oraclePrice, row.oraclePriceDecimals, { maxFractionDigits: 2 })}`
+                : "Unavailable"}
+            </span>
+            <span>
+              Attested fresh:{" "}
+              {row.lastPriceVerifiedTimestamp === 0
+                ? "Never"
+                : new Date(row.lastPriceVerifiedTimestamp * 1000).toLocaleString()}
+            </span>
+            <p className="text-xs text-muted-foreground">
+              Testnet oracle (StaticPriceOracle) — admin-set price, not production market pricing.
+            </p>
+          </div>
+        </div>
         <div className="border-t border-border pt-3">
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">CVA status</p>
           <div className="flex flex-col gap-1">

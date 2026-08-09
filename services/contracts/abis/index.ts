@@ -8,3 +8,4 @@ export { bitVRWACollateralRegistryAbi, RWA_ASSET_STATUS } from "./bitVRWACollate
 export { bitVCVAAdapterAbi } from "./bitVCVAAdapter";
 export { iaPassComplianceValidatorAbi } from "./iaPassComplianceValidator";
 export { erc20Abi } from "./erc20";
+export { priceOracleAbi } from "./priceOracle";
