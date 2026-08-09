@@ -53,13 +53,9 @@ export function Hero() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.15 }}
-          className="mt-6 max-w-2xl text-balance text-base text-muted-foreground sm:text-lg"
+          className="mt-6 max-w-xl text-balance text-base text-muted-foreground sm:text-lg"
         >
-          BitV combines verified identity, on-chain risk intelligence, and
-          asset-aware infrastructure to power trusted financial markets on
-          Monad — verified access, risk-adjusted lending, compliance-aware
-          RWA collateral, and permissioned yield vaults, all enforced directly
-          by the protocol&apos;s smart contracts.
+          Identity-native DeFi infrastructure for trusted financial markets.
         </motion.p>
 
         <motion.div
@@ -72,9 +68,9 @@ export function Hero() {
             Launch App
             <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
           </Link>
-          <a href="#protocol" className={buttonVariants("secondary", "h-12 px-6 text-sm")}>
-            Explore Protocol
-          </a>
+          <Link href="/product" className={buttonVariants("secondary", "h-12 px-6 text-sm")}>
+            Explore Product
+          </Link>
         </motion.div>
 
         <motion.div

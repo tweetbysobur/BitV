@@ -13,7 +13,7 @@ const FEATURES = [
 
 export function LendingSection() {
   return (
-    <section className="border-t border-border px-6 py-20">
+    <section id="lending" className="border-t border-border px-6 py-20">
       <div className="mx-auto max-w-5xl">
         <Reveal className="mx-auto max-w-2xl text-center">
           <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">

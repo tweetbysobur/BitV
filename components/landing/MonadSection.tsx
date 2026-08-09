@@ -9,7 +9,7 @@ const POINTS = [
 
 export function MonadSection() {
   return (
-    <section className="border-t border-border px-6 py-20">
+    <section id="monad" className="border-t border-border px-6 py-20">
       <div className="mx-auto max-w-4xl">
         <Reveal className="text-center">
           <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">

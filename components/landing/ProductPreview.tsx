@@ -1,5 +1,8 @@
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { Reveal } from "./Reveal";
 import { RiskTierBadge } from "@/components/dashboard/RiskTierBadge";
+import { buttonVariants } from "@/components/ui/button";
 
 export function ProductPreview() {
   return (
@@ -48,6 +51,13 @@ export function ProductPreview() {
               ))}
             </div>
           </div>
+        </Reveal>
+
+        <Reveal delay={0.16} className="mt-8 flex justify-center">
+          <Link href="/dashboard" className={buttonVariants("primary", "group h-11 px-6 text-sm")}>
+            Explore the App
+            <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
+          </Link>
         </Reveal>
       </div>
     </section>

@@ -7,10 +7,9 @@ import { BitVLockup } from "@/components/brand/BitVMark";
 import { buttonVariants } from "@/components/ui/button";
 
 const LINKS = [
-  { label: "Protocol", href: "#protocol" },
-  { label: "Risk", href: "#risk" },
-  { label: "RWA", href: "#rwa" },
-  { label: "Vaults", href: "#vaults" },
+  { label: "Product", href: "/product" },
+  { label: "How It Works", href: "/how-it-works" },
+  { label: "Risk", href: "/product#risk" },
   {
     label: "Docs",
     href: "https://github.com/tweetbysobur/BitV/tree/main/docs",
@@ -41,13 +40,13 @@ export function LandingNav() {
                 {link.label}
               </a>
             ) : (
-              <a
+              <Link
                 key={link.label}
                 href={link.href}
                 className="text-sm text-muted-foreground transition-colors hover:text-foreground"
               >
                 {link.label}
-              </a>
+              </Link>
             )
           )}
         </div>
@@ -84,14 +83,14 @@ export function LandingNav() {
                   {link.label}
                 </a>
               ) : (
-                <a
+                <Link
                   key={link.label}
                   href={link.href}
                   className="text-sm text-muted-foreground hover:text-foreground"
                   onClick={() => setOpen(false)}
                 >
                   {link.label}
-                </a>
+                </Link>
               )
             )}
             <Link
