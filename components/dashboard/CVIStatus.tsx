@@ -32,6 +32,13 @@ export function CVIStatus({ poolAddress }: { poolAddress: Address | undefined })
         Cleanverse Verified Identity (CVI) eligibility — checked against BitV&apos;s compliance gate only.
         Not a claim about any specific asset&apos;s CVA status.
       </p>
+      {!isLoading && status === "not-verified" ? (
+        <p className="text-xs text-muted-foreground">
+          This wallet doesn&apos;t have a Cleanverse CVI yet. BitV only checks eligibility — it
+          doesn&apos;t issue it. Verification happens through Cleanverse directly, not through
+          BitV; there&apos;s no self-service signup link we can confirm and point you to yet.
+        </p>
+      ) : null}
     </div>
   );
 }
