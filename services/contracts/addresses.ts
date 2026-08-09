@@ -24,16 +24,27 @@ export const contractAddresses: Partial<Record<BitVContractName, DeployedContrac
   CVAAdapter: { address: "0x2d2f0bdfea5e7e8c7dda7a6cd9dbd6f93ffd03e8", chainId: 10143 },
 };
 
-/** Deployed BitVYieldVault instances. Empty until real vaults are
- * deployed and their strategy composition is confirmed — see
+/** Deployed BitVYieldVault instances. See
  * YieldVaultRegistryEntry's NatSpec for why `isTestStrategy` must never
- * be guessed. */
-export const yieldVaults: readonly YieldVaultRegistryEntry[] = [];
+ * be guessed — this vault's currently-configured strategy
+ * (TestYieldStrategy, 0x5df7b517f11963abe6ef5957468c6fb32e18647a) is
+ * confirmed non-production, per deployment record in
+ * docs/deployment-addresses-template.md. */
+export const yieldVaults: readonly YieldVaultRegistryEntry[] = [
+  { address: "0xe0d6eb07790d367483554d29d3e7f8902b35ec6d", chainId: 10143, isTestStrategy: true },
+];
 
 /** RWA collateral assets the dashboard should query
- * BitVRWACollateralRegistry about. Empty until real assets are
- * registered and their addresses are confirmed — never invented. */
-export const rwaAssets: readonly DeployedContract[] = [];
+ * BitVRWACollateralRegistry about.
+ *
+ * BVTEST — the same testnet-only, no-real-value asset used for pool
+ * liquidity (see poolAssets below), registered as RWA collateral via
+ * contracts/script and verified on-chain. isCVAFullyRecognized is
+ * confirmed false — never present this asset as a Cleanverse Verified
+ * Asset. */
+export const rwaAssets: readonly DeployedContract[] = [
+  { address: "0xD031f2F863dd481a869814CaE6813b17590C3B45", chainId: 10143 },
+];
 
 /** Debt/collateral pool assets the dashboard should query
  * BitVPoolManager about. Empty until real pools exist.

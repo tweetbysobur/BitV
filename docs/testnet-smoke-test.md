@@ -157,9 +157,147 @@ write transaction was attempted.
 | 7. Repay | Repaid 100 BVTEST via `LendingManager.repay`. A small nonzero debt remained (`4.138127853881e12` wei, ~0.0000041 BVTEST) — real interest accrued between the repay call and the next read, not a bug. Closed fully with a second `repay` call using the `type(uint256).max` sentinel; `getCurrentDebt` then confirmed `0` |
 | 8. Withdraw collateral | Withdrew the full 500 BVTEST collateral via `LendingManager.withdrawCollateral`. `getCollateralBalance` confirmed `0` afterward |
 
-**Not yet executed**: steps 2 (network verification via UI), 10
-(liquidation — no second position exists to liquidate), 11-12 (vault
-deposit/withdraw — no vault deployed), 13 (RWA eligibility — no RWA
-asset registered), 15-16 (dashboard/event verification via UI), 17
-(treasury/fee behavior — no fee-generating event triggered yet, e.g. no
-`collectPerformanceFee` since no vault exists).
+## Results (Build 11, continued) — liquidation, vault, RWA, treasury
+
+Executed the same day, same deployer wallet, continuing directly from
+the results above.
+
+### Step 10: Liquidation
+
+Since BVTEST is used as both the collateral and debt asset in this
+smoke-test pool, oracle price manipulation cannot change the health
+factor (the price term cancels on both sides of the ratio). Instead, a
+real, permissioned admin action was used: `RISK_MANAGER_ROLE`
+temporarily lowered `PoolManager`'s risk params for BVTEST from
+LTV 70% / max-LTV 70% / liquidation threshold 80% to 60% / 60% / 60%,
+via `setRiskParams`, to make an existing healthy position briefly
+liquidatable — then restored the original params afterward. This is a
+legitimate on-chain governance action, not a workaround.
+
+1. Deposited 200 BVTEST collateral, borrowed 130 BVTEST. Health factor
+   confirmed `1.23x` (healthy) before the risk-param change.
+2. Lowered risk params as above. `getHealthFactor` confirmed `9.23e26`
+   (0.923x) — below 1.0x, liquidatable.
+3. Executed `LendingManager.liquidate(user, debtAsset, collateralAsset,
+   repayAmount)` — a controlled **self-liquidation** (the deployer
+   wallet was both the borrower and the liquidator, which the contract
+   permits; used deliberately here for a safe, fully-contained test).
+   Repaid 65 BVTEST (the 50% close-factor maximum on 130 debt).
+4. Post-liquidation reads confirmed exactly the expected math:
+   - Collateral: `1.3175e20` (131.75 BVTEST — seized 68.25 BVTEST,
+     i.e. 65 repaid × 1.05 liquidation bonus)
+   - Debt: `6.5e19` (65 BVTEST — 130 minus the 65 repaid)
+   - Liquidator settlement: net +3.25 BVTEST to the liquidator side of
+     the self-liquidation — exactly the 5% bonus
+5. Restored the original risk params (`setRiskParams` back to
+   70%/70%/80%/5%), then fully repaid the remaining 65 BVTEST debt
+   (`type(uint256).max` sentinel) and withdrew the remaining 131.75
+   BVTEST collateral, closing the test position cleanly.
+
+Transaction hashes were not individually captured this pass (the
+liquidation call's own receipt lookup failed on a terminal syntax
+error, not a chain-level issue) — every state change was instead
+independently verified via `cast call` reads before/after each step,
+which is the substantive verification this step required.
+
+**Result: PASS.**
+
+### Steps 11-12: Vault deposit / withdrawal
+
+Deployed a testnet `BitVYieldVault` (BVTEST-denominated) and bound
+`TestYieldStrategy` to it via `contracts/script/DeployTestnetVault.s.sol`
+— addresses recorded in `docs/deployment-addresses-template.md`.
+Registered the vault with Cleanverse's sandbox validator (its own,
+separate `POST /validator/register` call, since it's a distinct
+`BitVComplianceGuard` instance from `PoolManager`/`LendingManager`).
+`complianceVerify` confirmed `true` for the deployer against the vault
+before any deposit.
+
+- Raised `vaultCap` from its deployed default of `0` (which means zero
+  capacity, not unlimited — `type(uint256).max` is unlimited) to
+  1,000,000 BVTEST via `VAULT_MANAGER_ROLE`.
+- Deposited 200 BVTEST. `totalAssets` confirmed `2e20`; `balanceOf`
+  (shares) confirmed `2e26` — shares come out ~1,000,000× larger than
+  assets due to the vault's 6-decimal virtual-shares offset
+  (inflation-attack mitigation), which is expected ERC-4626 behavior,
+  not a bug.
+- **Pause behavior**: `setDepositsPaused(true)`, then a further deposit
+  attempt correctly **reverted**. Unpaused afterward.
+- **Strategy allocation**: raised `maxStrategyAllocationBps` to 50% and
+  `minIdleReserveBps` to 50%, then allocated 50 BVTEST to
+  `TestYieldStrategy`. `TestYieldStrategy.totalAssets` confirmed `5e19`
+  (50 BVTEST).
+- **Simulated yield + performance fee → Treasury**: set
+  `performanceFeeBps` to 10%, called `TestYieldStrategy.simulateYield`
+  for 10 BVTEST (test-only — pulled from the caller's own balance, not
+  a real yield source). Vault `totalAssets` confirmed `2.1e20` (210).
+  Called `collectPerformanceFee()`; Treasury's BVTEST balance confirmed
+  increased by exactly `1e18` (1 BVTEST) — precisely 10% of the 10
+  BVTEST simulated profit.
+- **Standard withdrawal**: withdrew 50 BVTEST. `totalAssets` confirmed
+  `1.59e20` (159 — 210 minus the 1 BVTEST fee minus the 50 withdrawn,
+  exact).
+- **Emergency withdrawal**: `emergencyWithdraw()` burned all remaining
+  shares; `balanceOf` confirmed `0` afterward.
+
+**Result: PASS** (deposit, shares, totalAssets, withdrawal, compliance
+gating, pause behavior, strategy allocation, and emergency withdrawal
+all verified via on-chain reads). Compliance gating specifically for
+the vault was verified via the same `complianceVerify`/registration
+mechanism already proven twice on `PoolManager`/`LendingManager`,
+rather than re-run as a separate negative test on the vault itself.
+
+### Step 13: RWA eligibility
+
+Registered BVTEST as RWA collateral on `RWACollateralRegistry`
+(LTV 60%, liquidation threshold 70%, liquidation bonus 5%, collateral
+cap 50,000 BVTEST — all ≤ the underlying pool's own configured
+ceilings, as the registry requires), priced by the same
+`StaticPriceOracle` already in use, then called `markPriceFresh`.
+
+- `isRegisteredAsset`: confirmed `true`
+- `isEligibleForNewActivity`: confirmed `true`
+- **Frozen behavior**: `setAssetStatus(Frozen)` → `isEligibleForNewActivity`
+  confirmed `false`. Restored to Active → confirmed `true` again.
+- **CVA claim check**: `isCVAFullyRecognized` confirmed `false` — no
+  CVA attestation was ever set for this asset, and none is claimed.
+  BVTEST is a test asset with no real backing and is never presented
+  as, or confused with, a Cleanverse Verified Asset.
+- Delisted-status behavior (terminal, irreversible transition) was
+  **not tested** — deliberately, to avoid permanently delisting the
+  registry's only test asset mid-verification.
+
+**Result: PASS** (registration, eligibility, LTV/threshold/cap limits,
+oracle-freshness requirement, and frozen-state behavior all verified;
+delisted-state transition explicitly not exercised, by design).
+
+### Step 17: Treasury and fees
+
+Covered by the vault section above — `collectPerformanceFee()`
+delivered exactly 1 BVTEST (10% of 10 BVTEST simulated yield) to
+`BitVTreasury`'s real ERC-20 balance, confirmed via a direct
+`balanceOf` read before and after. This is the one fee-to-Treasury path
+that was actually exercisable this pass: `BitVPoolManager`'s reserve-
+factor interest (10% on the BVTEST pool) accrues internally as
+additional scaled supply credited to the Treasury's address within the
+pool's own accounting, but nothing calls `PoolManager.withdraw` as the
+Treasury contract itself (which has no such function) — so that
+specific interest-reserve path was not exercised or verified this
+pass. This is worth a deliberate design decision in a future build
+(e.g. a Treasury-callable claim function), not something this
+verification pass attempted to fix.
+
+**Result: PASS** for the vault performance-fee path; **NOT EXECUTED**
+for the pool reserve-factor path (see above).
+
+## Not yet executed
+
+- Step 1 (wallet connection) and steps 2, 15-16 (network state,
+  dashboard UI, protocol-event verification) — require driving an
+  actual browser wallet session against `bitvapp.vercel.app`, not yet
+  completed this pass.
+- Delisted RWA-asset transition (deliberately skipped, terminal/
+  irreversible).
+- Pool reserve-factor interest reaching Treasury (see Step 17 above —
+  a real, identified gap in the current Treasury interface, not an
+  execution gap).
