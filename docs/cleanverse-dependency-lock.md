@@ -10,12 +10,13 @@ inference performed here.
 | Requirement | Status | Required for | Source | Next action |
 |---|---|---|---|---|
 | CVI validator address (Monad Testnet) | **CONFIRMED (Build 11) — `0xaC7e5179C2C7f03f209136886c172eb34F161792`** | Deployed `BitVPoolManager`/`BitVLendingManager` — used in both constructors and confirmed consistent by `ValidateDeployment.s.sol` | BitV team, direct confirmation (not independently verified against `docs.cleanverse.com` — that domain remains network-blocked from this sandbox) | None — recorded in `docs/deployment-addresses-template.md` |
-| Official Monad Testnet support | **CONFIRMED (Build 11), per BitV team** — still absent from both official PDFs' text | The above | BitV team, direct confirmation; the CVA guide's network list ("Ethereum, Base, BSC, Arbitrum, Polygon, etc.") still omits Monad in its own text | None for this deployment; still worth Cleanverse formally updating their published network list |
-| Chain ID Cleanverse expects for Monad | **UNCONFIRMED** | Validator registration | Not given by either PDF for any network | Ask Cleanverse — do not assume `10143` is what their systems expect without confirmation, even though it is BitV's own verified value |
-| Validator registration process (`POST /api/cooperate/validator/register`) | **CONFIRMED** exists (CVI guide §5.4), **UNCONFIRMED** in operational detail (auth, exact payload beyond what's transcribed) | Making any deployed BitV contract's `complianceVerify` return true for anyone | CVI Integration Guide V2 §5 | Obtain the operational detail from Cleanverse once a validator address/network is confirmed |
-| `CLEANVERSE_API_KEY` format/provisioning | **UNCONFIRMED** | Calling any Cleanverse off-chain API | Not described by either guide | Ask Cleanverse how BitV obtains API credentials |
-| `CLEANVERSE_API_BASE_URL` | **UNCONFIRMED** | Same as above | Not given | Ask Cleanverse |
-| CVI registration/issuance flow (how a wallet gets a CVI) | **UNCONFIRMED** | Understanding the user-facing KYC flow BitV's users go through | Neither guide describes it — both start from "the user already has a CVI" | Ask Cleanverse or find separate documentation |
+| Official Monad Testnet support | **CONFIRMED (Build 11) — primary source.** Cleanverse's live Gateway API docs (`docs.cleanverse.com`, Cooperate API, `generate_apass`'s `wallet.chain` enum) explicitly list `monad` as a supported chain. | The above | Live Cleanverse API reference (Cooperate API "A-Pass Management" module), viewed directly by the BitV team 2026-08-09 | None — the official PDFs' text is simply stale relative to the live API |
+| Chain ID Cleanverse expects for Monad | **UNCONFIRMED still** — the API addresses chains by name (`"monad"`), not numeric chain ID, in every schema reviewed | Validator registration | Live Cooperate API docs | No action needed — registration in practice used the chain name, not a numeric ID, and succeeded |
+| `CLEANVERSE_API_BASE_URL` (sandbox) | **CONFIRMED** — `https://uatapi.cleanverse.com/api/cooperate` | Every Cooperate API call | Live Cooperate API docs, "Environment" section | None. Production is `https://api.cleanverse.com/api/cooperate` — not used this milestone (sandbox only) |
+| `api-id` / `api-key` credential model | **CONFIRMED** — two separate credentials: `api-id` (sent as a request header, identifies the app) and `api-key` (Base64-encoded, used only locally to derive the AES-CBC/PKCS5Padding encryption key with a fixed 16-zero-byte IV, never transmitted) | Every encrypted Cooperate API endpoint | Live Cooperate API docs, "Authentication"/"Encryption" sections | None — BitV has a sandbox `api-id`/`api-key` pair and used both successfully |
+| `POST /generate_apass` (CVI/A-Pass issuance) | **CONFIRMED, used successfully (Build 11)** — issued a real sandbox A-Pass for the deployer wallet (`0xa26ee13a084c756a3a44dda68f0547a1e654fb81`) on chain `monad` | Giving a wallet a CVI so `complianceVerify` can ever return true for it | Live Cooperate API docs, "A-Pass Management" section; executed via the sandbox API, response `code: 0000` | None — this is how BitV (or any partner) issues a CVI in practice |
+| `POST /validator/register` (pool/contract compliance registration) | **CONFIRMED, used successfully (Build 11)** — registered both `BitVPoolManager` and `BitVLendingManager` as compliance pools on `monad`, each with an initial unrestricted `Rule` object and an EIP-191 `owner_signature` over `chain + contract_address` | Making `complianceVerify(poolAddress, userAddress)` evaluate anything instead of always failing closed | Live Cooperate API docs, "Validator Compliance" section; executed via the sandbox API, response `code: 0000` for both contracts | None for these two contracts — repeat per additional compliance-gated contract (e.g. a future `BitVYieldVault`) |
+| Compliance Rule object schema | **CONFIRMED** — `allowed_group`, `allowed_sub_group` (string, empty = unrestricted), `min_tier`, `min_sub_tier` (integer 0-99, 0 = unrestricted), `is_black_list` (bool, optional), `countries` (array of ISO 3166-1 alpha-2, optional) | `/validator/register`, `/validator/set_rule`, `/validator/add_rule` | Live Cooperate API docs | None |
 | `IAPassComplianceValidator.complianceVerify` | **CONFIRMED**, implemented | The sole on-chain eligibility gate for every protected BitV action | CVI Integration Guide V2 §3.2, transcribed verbatim in `IAPassComplianceValidator.sol` | None — already correct |
 | `RuleV2` struct / rule-management functions (CVI side) | **CONFIRMED**, implemented | Compliance rule configuration | CVI guide §3.1/§5.2/§6 | None — already correct |
 | `BitVCVAAdapter` (BitV's own contract) | **CONFIRMED as implemented, unchanged this milestone** | Being the single boundary for any CVA-specific on-chain call | `docs/cva-integration-specification.md`, `contracts/src/core/BitVCVAAdapter.sol` | None required — this milestone did not touch it, per the instruction that the adapter must remain unchanged unless a confirmed official interface requires a correction (none surfaced) |
@@ -33,7 +34,30 @@ inference performed here.
 - No new function was added to `IAPassComplianceValidator.sol` or
   `IATokenPolicy.sol`.
 - No Cleanverse address (validator, CVA policy, or otherwise) was
-  invented or filled into any config file.
+  invented — every value in this table (validator address, chain
+  support, API base URL, credential model, registration process) came
+  either from the BitV team's direct confirmation or Cleanverse's own
+  live API documentation, viewed and quoted directly.
+
+## Sandbox compliance registrations on record (Build 11)
+
+| Contract | Address | Cleanverse registration | Rule |
+|---|---|---|---|
+| `BitVPoolManager` | `0x46f89aeee3af4c77c2c77ad3b05412404100cc93` | Registered via `POST /validator/register`, sandbox, `monad` | Unrestricted (`min_tier: 0`, no group/country constraint) |
+| `BitVLendingManager` | `0x9e1b4a5e49186b732265fea4388f3f16b303decf` | Registered via `POST /validator/register`, sandbox, `monad` | Unrestricted (`min_tier: 0`, no group/country constraint) |
+
+Deployer wallet `0xa26ee13a084c756a3a44dda68f0547a1e654fb81` holds a
+sandbox A-Pass (customer ID `BITVDEPLOYER01`) issued via
+`generate_apass`. `complianceVerify` confirmed returning `true` for
+this wallet against both registered contracts, directly via
+`cast call` against the live Monad Testnet validator
+(`0xaC7e5179C2C7f03f209136886c172eb34F161792`).
+
+**This is a sandbox (UAT) registration, not production.** Before any
+real-value deployment, equivalent registration must happen against
+Cleanverse's production API (`https://api.cleanverse.com/api/cooperate`)
+with production credentials, and real users need production A-Passes —
+none of that is implied or covered by this sandbox setup.
 
 ## Where this table supersedes/consolidates
 

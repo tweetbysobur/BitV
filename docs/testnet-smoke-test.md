@@ -1,12 +1,16 @@
-# BitV Testnet Smoke-Test Plan (Build 09)
+# BitV Testnet Smoke-Test Plan (Build 09, partially executed in Build 11)
 
-This is a manual test sequence to run **after** a real deployment exists
+This is a manual test sequence, run **after** a real deployment exists
 on Monad Testnet and `services/contracts/addresses.ts` has been populated
 with the resulting addresses — see `docs/deployment-readiness.md` for
-what must be true before that deployment happens. **None of the steps
-below have been executed.** This document does not claim any transaction
-succeeded; it defines what "succeeded" should look like when someone
-actually runs it.
+what had to be true before that deployment happened.
+
+> **Build 11 update:** steps 1-9 (core lending cycle) have now been
+> executed for real against Monad Testnet and are recorded in
+> [`## Results (Build 11)`](#results-build-11) at the bottom of this
+> file. Steps 10-17 (liquidation, vault, RWA, dashboard/event/treasury
+> verification) remain unexecuted — no vault or RWA asset is deployed
+> yet, and those steps still describe intended behavior only.
 
 Each step lists: the action, the on-chain call(s) it exercises, and what
 to verify before moving to the next step. Use conservative, small amounts
@@ -122,5 +126,40 @@ be cheap to recover from.
 
 Record actual results (transaction hashes, before/after balances, any
 discrepancy from the expected behavior above) in a follow-up document —
-this plan intentionally contains no results, since none of these
-transactions have been executed.
+this plan intentionally contained no results originally, since none of
+these transactions had been executed. See below for what has since run.
+
+## Results (Build 11)
+
+Executed 2026-08-09 against real Monad Testnet (chain 10143), from a
+GitHub Codespace, using deployer wallet
+`0xa26ee13a084c756a3a44dda68f0547a1e654fb81`. Values confirmed via
+`cast call` reads after each write, not just transaction success.
+
+**Compliance setup** (prerequisite, not in the original numbered list):
+issued a sandbox Cleanverse A-Pass to the deployer wallet via
+`generate_apass` (chain `monad`), then registered both
+`BitVPoolManager` and `BitVLendingManager` as compliance pools via
+`POST /validator/register` with an unrestricted rule — see
+`docs/cleanverse-dependency-lock.md`'s "Sandbox compliance
+registrations" section for the full detail. `complianceVerify`
+confirmed `true` for the deployer against both contracts before any
+write transaction was attempted.
+
+| Step | Result |
+|---|---|
+| 1. Connect wallet | Not exercised via the dashboard UI this pass — compliance/lending exercised directly via `cast`, see above |
+| 3. Verify CVI status | `complianceVerify` confirmed `true` for the deployer on both `PoolManager` and `LendingManager` after registration |
+| 4. Supply liquidity | Deposited 1,000 BVTEST into the pool via `PoolManager.deposit`. `balanceOf(BVTEST, deployer)` on the pool confirmed `1e21` (1,000 BVTEST) afterward |
+| 5. Deposit collateral | Deposited 500 BVTEST as collateral via `LendingManager.depositCollateral`. `getCollateralBalance` confirmed `5e20` (500 BVTEST) |
+| 6. Borrow | Borrowed 100 BVTEST via `LendingManager.borrow`. `getCurrentDebt` confirmed `1e20` (100 BVTEST) |
+| 9. Check health factor | `getHealthFactor` returned `4e27` (4.0x) — matches the expected math exactly: 500 collateral × 80% liquidation threshold ÷ 100 debt |
+| 7. Repay | Repaid 100 BVTEST via `LendingManager.repay`. A small nonzero debt remained (`4.138127853881e12` wei, ~0.0000041 BVTEST) — real interest accrued between the repay call and the next read, not a bug. Closed fully with a second `repay` call using the `type(uint256).max` sentinel; `getCurrentDebt` then confirmed `0` |
+| 8. Withdraw collateral | Withdrew the full 500 BVTEST collateral via `LendingManager.withdrawCollateral`. `getCollateralBalance` confirmed `0` afterward |
+
+**Not yet executed**: steps 2 (network verification via UI), 10
+(liquidation — no second position exists to liquidate), 11-12 (vault
+deposit/withdraw — no vault deployed), 13 (RWA eligibility — no RWA
+asset registered), 15-16 (dashboard/event verification via UI), 17
+(treasury/fee behavior — no fee-generating event triggered yet, e.g. no
+`collectPerformanceFee` since no vault exists).
