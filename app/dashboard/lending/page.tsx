@@ -14,17 +14,33 @@ import { BitScoreCard } from "@/components/dashboard/BitScoreCard";
 import { useWalletStatus } from "@/hooks/useWalletStatus";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
 import { useContractAddress } from "@/hooks/useContractAddress";
+import { useCVIStatus } from "@/hooks/useCVIStatus";
 import { formatBps } from "@/lib/format";
 
 export default function LendingPage() {
-  const { state: walletState } = useWalletStatus();
+  const { state: walletState, chainId, expectedChainId } = useWalletStatus();
   const position = useLendingPosition();
   const lendingManagerAddress = useContractAddress("LendingManager");
+  const cvi = useCVIStatus(lendingManagerAddress);
   const queryClient = useQueryClient();
 
-  if (walletState !== "connected") {
+  if (walletState === "disconnected") {
     return <p className="text-muted-foreground">Connect your wallet to view your lending position.</p>;
   }
+  if (walletState === "connecting") {
+    return <p className="text-muted-foreground">Connecting wallet…</p>;
+  }
+  if (walletState === "wrong-network" || walletState === "unsupported-network") {
+    return (
+      <p className="text-muted-foreground">
+        BitV runs on Monad Testnet (chain {expectedChainId}). Your wallet is connected to
+        {chainId !== undefined ? ` chain ${chainId}` : " an unrecognized network"} — switch networks in your
+        wallet to use lending.
+      </p>
+    );
+  }
+
+  const cviBlocksActions = !cvi.isLoading && cvi.status === "not-verified";
 
   function refetchPosition() {
     void queryClient.invalidateQueries();
@@ -47,8 +63,8 @@ export default function LendingPage() {
         </Card>
       </div>
 
-      <SupplyWithdrawPanel />
-      <CollateralBorrowPanel onPositionChanged={refetchPosition} />
+      <SupplyWithdrawPanel actionsDisabled={cviBlocksActions} />
+      <CollateralBorrowPanel onPositionChanged={refetchPosition} actionsDisabled={cviBlocksActions} />
 
       <DataStateView state={position} loadingLabel="Reading lending position">
         {(data) => (

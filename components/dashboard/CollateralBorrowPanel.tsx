@@ -33,7 +33,13 @@ const STATUS_LABEL: Record<string, string> = {
  * separate contracts, two separate allowances, by design in the
  * deployed contracts (see BitVLendingManager.depositCollateral, which
  * calls transferFrom directly rather than routing through the pool). */
-export function CollateralBorrowPanel({ onPositionChanged }: { onPositionChanged?: () => void }) {
+export function CollateralBorrowPanel({
+  onPositionChanged,
+  actionsDisabled,
+}: {
+  onPositionChanged?: () => void;
+  actionsDisabled?: boolean;
+}) {
   const lendingManagerAddress = useContractAddress("LendingManager");
   const asset = poolAssets[0] as { address: Address; chainId: number } | undefined;
   const decimals = 18;
@@ -60,10 +66,14 @@ export function CollateralBorrowPanel({ onPositionChanged }: { onPositionChanged
   const parsedRepay = repayAmount ? safeParse(repayAmount, decimals) : undefined;
 
   const needsApproval = parsedCollateral !== undefined && (allowance === undefined || allowance < parsedCollateral);
-  const collateralBusy = approveState === "pending" || approveState === "confirming" || depositState === "pending" || depositState === "confirming";
-  const uncollateralBusy = withdrawState === "pending" || withdrawState === "confirming";
-  const borrowBusy = borrowState === "pending" || borrowState === "confirming";
-  const repayBusy = repayState === "pending" || repayState === "confirming";
+  const collateralExceedsBalance = parsedCollateral !== undefined && balance !== undefined && parsedCollateral > balance;
+  const collateralBusy = actionsDisabled || approveState === "pending" || approveState === "confirming" || depositState === "pending" || depositState === "confirming";
+  const uncollateralBusy = actionsDisabled || withdrawState === "pending" || withdrawState === "confirming";
+  const borrowBusy = actionsDisabled || borrowState === "pending" || borrowState === "confirming";
+  const repayBusy = actionsDisabled || repayState === "pending" || repayState === "confirming";
+  const cviHelperText = actionsDisabled
+    ? "CVI required — complete Cleanverse verification before using this market."
+    : undefined;
 
   function afterConfirmed() {
     refetchAllowance();
@@ -91,7 +101,8 @@ export function CollateralBorrowPanel({ onPositionChanged }: { onPositionChanged
           buttonLabel={needsApproval ? "Approve" : "Deposit"}
           buttonVariant="primary"
           isLoading={needsApproval ? approveState === "pending" || approveState === "confirming" : depositState === "pending" || depositState === "confirming"}
-          disabled={!parsedCollateral || collateralBusy}
+          disabled={!parsedCollateral || collateralExceedsBalance || collateralBusy}
+          helperText={collateralExceedsBalance ? "Amount exceeds your wallet balance." : cviHelperText}
           onSubmit={() => {
             if (!parsedCollateral) return;
             if (needsApproval) {
@@ -121,6 +132,7 @@ export function CollateralBorrowPanel({ onPositionChanged }: { onPositionChanged
           buttonVariant="secondary"
           isLoading={uncollateralBusy}
           disabled={!parsedUncollateral || uncollateralBusy}
+          helperText={cviHelperText}
           onSubmit={() => {
             if (!parsedUncollateral) return;
             withdrawCollateral({ lendingManagerAddress, assetAddress: asset.address, amount: parsedUncollateral });
@@ -146,6 +158,7 @@ export function CollateralBorrowPanel({ onPositionChanged }: { onPositionChanged
           buttonVariant="primary"
           isLoading={borrowBusy}
           disabled={!parsedBorrow || borrowBusy}
+          helperText={cviHelperText}
           onSubmit={() => {
             if (!parsedBorrow) return;
             borrow({ lendingManagerAddress, assetAddress: asset.address, amount: parsedBorrow });
@@ -171,6 +184,7 @@ export function CollateralBorrowPanel({ onPositionChanged }: { onPositionChanged
           buttonVariant="secondary"
           isLoading={repayBusy}
           disabled={!parsedRepay || repayBusy}
+          helperText={cviHelperText}
           onSubmit={() => {
             if (!parsedRepay) return;
             repay({ lendingManagerAddress, assetAddress: asset.address, amount: parsedRepay });
@@ -202,6 +216,7 @@ function ActionRow({
   txHash,
   errorMessage,
   onConfirmed,
+  helperText,
 }: {
   label: string;
   inputId: string;
@@ -216,6 +231,7 @@ function ActionRow({
   txHash: `0x${string}` | undefined;
   errorMessage: string | undefined;
   onConfirmed: () => void;
+  helperText?: string;
 }) {
   const [notifiedFor, setNotifiedFor] = useState<string | undefined>(undefined);
   useEffect(() => {
@@ -245,6 +261,7 @@ function ActionRow({
           {buttonLabel}
         </Button>
       </div>
+      {helperText ? <p className="text-xs text-destructive">{helperText}</p> : null}
       {state !== "idle" ? (
         <p className="text-xs text-muted-foreground" role="status" aria-live="polite">
           {STATUS_LABEL[state] ?? state}

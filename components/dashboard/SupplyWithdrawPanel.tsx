@@ -29,7 +29,7 @@ const STATUS_LABEL: Record<string, string> = {
  * flow; withdraw is a single call. Every step waits for its own
  * transaction receipt before advancing — never shows "success" from a
  * submitted-but-unconfirmed transaction. */
-export function SupplyWithdrawPanel() {
+export function SupplyWithdrawPanel({ actionsDisabled }: { actionsDisabled?: boolean } = {}) {
   const poolManagerAddress = useContractAddress("PoolManager");
   const asset = poolAssets[0] as { address: Address; chainId: number } | undefined;
   const decimals = 18;
@@ -49,9 +49,10 @@ export function SupplyWithdrawPanel() {
   const parsedSupply = supplyAmount ? safeParse(supplyAmount, decimals) : undefined;
   const parsedWithdraw = withdrawAmount ? safeParse(withdrawAmount, decimals) : undefined;
   const needsApproval = parsedSupply !== undefined && (allowance === undefined || allowance < parsedSupply);
+  const supplyExceedsBalance = parsedSupply !== undefined && balance !== undefined && parsedSupply > balance;
 
-  const busy = approveState === "pending" || approveState === "confirming" || depositState === "pending" || depositState === "confirming";
-  const withdrawBusy = withdrawState === "pending" || withdrawState === "confirming";
+  const busy = actionsDisabled || approveState === "pending" || approveState === "confirming" || depositState === "pending" || depositState === "confirming";
+  const withdrawBusy = actionsDisabled || withdrawState === "pending" || withdrawState === "confirming";
 
   return (
     <Card>
@@ -85,7 +86,7 @@ export function SupplyWithdrawPanel() {
                 type="button"
                 variant="primary"
                 isLoading={approveState === "pending" || approveState === "confirming"}
-                disabled={!parsedSupply || busy}
+                disabled={!parsedSupply || supplyExceedsBalance || busy}
                 onClick={() => {
                   if (!parsedSupply) return;
                   approve({ assetAddress: asset.address, spender: poolManagerAddress, amount: parsedSupply });
@@ -98,7 +99,7 @@ export function SupplyWithdrawPanel() {
                 type="button"
                 variant="primary"
                 isLoading={depositState === "pending" || depositState === "confirming"}
-                disabled={!parsedSupply || busy}
+                disabled={!parsedSupply || supplyExceedsBalance || busy}
                 onClick={() => {
                   if (!parsedSupply) return;
                   deposit({ poolManagerAddress, assetAddress: asset.address, amount: parsedSupply });
@@ -108,6 +109,12 @@ export function SupplyWithdrawPanel() {
               </Button>
             )}
           </div>
+          {supplyExceedsBalance ? (
+            <p className="text-xs text-destructive">Amount exceeds your wallet balance.</p>
+          ) : null}
+          {actionsDisabled ? (
+            <p className="text-xs text-destructive">CVI required — complete Cleanverse verification before using this market.</p>
+          ) : null}
           <ActionStatus
             state={approveState !== "idle" ? approveState : depositState}
             txHash={approveHash ?? depositHash}
