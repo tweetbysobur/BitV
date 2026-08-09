@@ -11,3 +11,5 @@ export { useActivity } from "./useActivity";
 export { useTreasuryReserve } from "./useTreasuryReserve";
 export { useClaimPoolReserve } from "./useClaimPoolReserve";
 export { useSupplyAllowance, useApproveAsset, useDepositToPool, useWithdrawFromPool } from "./usePoolSupplyWithdraw";
+export { useApproveLendingManager, useDepositCollateral, useWithdrawCollateral, useBorrow, useRepay } from "./useLendingActions";
+export { useVaultAllowance, useApproveVaultAsset, useVaultDeposit, useVaultWithdraw } from "./useVaultActions";
