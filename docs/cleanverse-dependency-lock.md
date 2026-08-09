@@ -59,6 +59,20 @@ Cleanverse's production API (`https://api.cleanverse.com/api/cooperate`)
 with production credentials, and real users need production A-Passes —
 none of that is implied or covered by this sandbox setup.
 
+## Prompt 15 status (2026-08-09)
+
+Phase 6 of Prompt 15 asked for live re-verification of the configured
+CVI validator, deployer CVI status, and PoolManager/LendingManager
+registration against real Monad Testnet + Cleanverse sandbox state.
+**Not executed** — this session's sandbox has confirmed-blocked network
+egress to both `docs.cleanverse.com` and `uatapi.cleanverse.com`
+(tested live this milestone, `403 CONNECT tunnel failed`), so no live
+Cleanverse call could be made without fabricating a result. Every fact
+in this document remains exactly as confirmed during Build 11 (by the
+BitV team, executing directly against the real sandbox API from their
+own terminal) — nothing here was re-verified or changed this session,
+and nothing was invented to fill the gap.
+
 ## Where this table supersedes/consolidates
 
 This table restates, in the exact format Build 10 Phase 8 asks for, facts

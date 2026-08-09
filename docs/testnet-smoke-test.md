@@ -301,3 +301,17 @@ for the pool reserve-factor path (see above).
 - Pool reserve-factor interest reaching Treasury (see Step 17 above —
   a real, identified gap in the current Treasury interface, not an
   execution gap).
+
+## Prompt 15 status (2026-08-09)
+
+Prompt 15 Phase 8 asked for the full 18-item smoke test to be re-run
+against a fresh Monad Testnet deployment. **Not executed this
+session** — the fresh deployment itself could not be broadcast
+(confirmed-blocked network egress to `testnet-rpc.monad.xyz`, tested
+live this milestone), so there is no new deployment to smoke-test
+against. The results above remain from Build 11's real, hand-executed
+run against the (still-live, but Prompt-14-code-predating) Build 11
+deployment. A dedicated frontend check found the Prompt 14 reserve-claim
+functionality has no dashboard hook, component, or updated ABI entry —
+see the Prompt 15 final report for detail; this is unrelated to the
+network-egress block and is a real frontend gap on its own.

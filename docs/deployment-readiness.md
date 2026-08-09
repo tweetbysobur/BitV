@@ -336,3 +336,21 @@ Yes, mechanically — once `services/contracts/addresses.ts` is populated with r
 6. Only then consider `BitVYieldVault` deployment (per asset) and `BitVRWACollateralRegistry.registerAsset` for any RWA collateral — both are separate, deliberate governance actions, not part of core deployment.
 7. Register each Cleanverse-gated contract's address with Cleanverse off-chain before expecting `complianceVerify` to return anything but `false` for real users.
 8. Only after all of the above: populate `services/contracts/addresses.ts` with the confirmed, verified addresses so the dashboard switches from empty/unavailable to live state.
+
+## Prompt 15 status (2026-08-09)
+
+Prompt 15 requested a full fresh Monad Testnet deployment and live
+verification cycle (Phases 4-11 of that milestone). This session's
+sandbox has confirmed-blocked network egress to
+`testnet-rpc.monad.xyz`, `docs.cleanverse.com`, and
+`uatapi.cleanverse.com` (all three tested live this milestone —
+`403 CONNECT tunnel failed`), so none of the broadcast, live-validation,
+or live-Cleanverse-verification phases could be executed. Phases 1-3
+(repository/deployment-order audit, environment/secret-safety audit,
+`forge build`/`forge test`/`npm run lint`/`npm run build`/Vitest) were
+executed and are recorded in `docs/development-log.md`'s Milestone 15
+entry and the Prompt 15 final report. See
+`docs/deployment-addresses-template.md`'s "Prompt 15 status" section
+for the specific consequence: the live Build 11 addresses predate
+Prompt 14's `claimReserve`/`claimPoolReserve` code, so that
+functionality has never been exercised on real Monad Testnet state.

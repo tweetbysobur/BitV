@@ -4,6 +4,61 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 15 — Final Monad Testnet deployment attempt (Prompt 15)
+
+**Date:** 2026-08-09
+
+**Context:** Prompt 15 asked for a fresh, independently-verified Monad
+Testnet deployment cycle (redeploy, live-validate, live-Cleanverse-
+verify, live-smoke-test, dashboard-connect, launch-readiness matrix),
+explicitly not assuming Build 11's addresses are still valid.
+
+**What was executed (real, this session):**
+- Frontend dashboard smoke test for Prompt 14's reserve-claim feature —
+  **FAILED**: no hook, no dashboard UI, and a stale
+  `services/contracts/abis/bitVPoolManager.ts` missing `claimReserve`/
+  `reserveBalance`/`ReserveClaimed` entirely. Real gap, not fixed this
+  milestone (out of Prompt 15's deployment-only scope).
+- Phase 1 (repo/deployment-order audit): `Deploy.s.sol`,
+  `ValidateDeployment.s.sol`, `contracts/.env.example`,
+  `services/contracts/addresses.ts` all reviewed — deployment order,
+  constructor dependencies, and validation checks confirmed consistent
+  with prior audits; no blocker found requiring a code change.
+- Phase 2 (environment/secret safety): confirmed no `.env`/`.env.local`
+  tracked in git, no private keys or API secrets found anywhere in
+  source, git history, or the frontend bundle sources.
+- Phase 3 (test suites): `forge build` clean (no recompilation needed —
+  no Solidity changed since Prompt 14's 240/240 confirmed run),
+  `npm run lint` clean, Vitest 41/41 reconfirmed.
+- Live connectivity check: `testnet-rpc.monad.xyz`,
+  `docs.cleanverse.com`, and `uatapi.cleanverse.com` all tested live
+  this session — all three return `403 CONNECT tunnel failed`, this
+  sandbox's network egress remains blocked exactly as throughout
+  Build 11.
+
+**What was not executed (blocked, not fabricated):** Phases 4-11 —
+actual deployment broadcast, live `ValidateDeployment.s.sol` run, live
+Cleanverse validator/registration verification, live asset/oracle
+configuration, the 18-item live smoke test, and dashboard connection
+against a fresh deployment. None of these can be performed without real
+network egress this sandbox does not have. No address, transaction
+hash, or test result was invented to fill the gap.
+
+**Key finding:** Prompt 14's `BitVPoolManager.claimReserve` /
+`BitVTreasury.claimPoolReserve` were added (commit `b751893`) *after*
+Build 11's live deployment (commit `4a8cd14`) — the currently-live
+Monad Testnet contracts do not contain that code. Prompt 14's fix is
+verified only in Foundry (240/240); it has never run against real
+testnet state. A redeployment is required before it can be.
+
+**Final decision:** **NOT READY** for the "independently verified on
+Monad Testnet" bar Prompt 15 sets — blocked purely on this sandbox's
+network access, not on any code, test, or architecture defect. See the
+Prompt 15 final report for the full launch-readiness matrix and the
+smallest next action per blocker.
+
+---
+
 ## Milestone 14 — Treasury reserve-factor interest claim (Prompt 14)
 
 **Date:** 2026-08-09

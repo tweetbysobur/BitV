@@ -11,6 +11,29 @@ the full verification these addresses underwent.
 
 Any field still marked `(empty)` below means genuinely not deployed — never filled with a placeholder.
 
+## Prompt 15 status (2026-08-09) — redeployment not executed this session
+
+Prompt 15 asked for a fresh Monad Testnet deployment, explicitly not
+assuming the addresses below are still valid. That redeployment was
+**not executed**: this session's sandbox has confirmed-blocked network
+egress to `testnet-rpc.monad.xyz` (`403 CONNECT tunnel failed`,
+verified live during this milestone, same restriction documented
+throughout Build 11), so no transaction could be broadcast without
+fabricating a result — which this milestone's stop conditions
+explicitly forbid.
+
+**Important correctness note:** the addresses below were deployed
+*before* Prompt 14's `BitVPoolManager.claimReserve` /
+`BitVTreasury.claimPoolReserve` code existed (commit `4a8cd14`,
+Build 11, predates Prompt 14's `b751893`). The live `BitVPoolManager`
+and `BitVTreasury` bytecode at these addresses does **not** contain the
+reserve-claim functions — Prompt 14's fix is verified only in Foundry
+(240/240), never on live Monad Testnet. Redeploying (at minimum
+`BitVPoolManager` and `BitVTreasury`, which are position-dependency
+roots for `BitVLendingManager`/`BitVRWACollateralRegistry`/any vault —
+practically, a full redeploy) is required before Build 14 can be
+exercised on real testnet state.
+
 ## Monad Testnet (chain ID 10143)
 
 | Contract | Address | Deployed | Validated (`ValidateDeployment.s.sol`) |
