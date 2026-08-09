@@ -1,3 +1,4 @@
+import { MotionConfig } from "framer-motion";
 import { LandingNav } from "@/components/landing/LandingNav";
 import { Hero } from "@/components/landing/Hero";
 import { InfrastructureStrip } from "@/components/landing/InfrastructureStrip";
@@ -19,25 +20,27 @@ import { ProtocolCapabilities } from "@/components/landing/ProtocolCapabilities"
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen">
-      <LandingNav />
-      <Hero />
-      <InfrastructureStrip />
-      <Problem />
-      <Solution />
-      <Architecture />
-      <ProtocolCapabilities />
-      <RiskIntelligence />
-      <LendingSection />
-      <RWASection />
-      <VaultsSection />
-      <Liquidity />
-      <Security />
-      <MonadSection />
-      <ProductPreview />
-      <HowItWorks />
-      <FinalCTA />
-      <LandingFooter />
-    </main>
+    <MotionConfig reducedMotion="user">
+      <main className="min-h-screen">
+        <LandingNav />
+        <Hero />
+        <InfrastructureStrip />
+        <Problem />
+        <Solution />
+        <Architecture />
+        <ProtocolCapabilities />
+        <RiskIntelligence />
+        <LendingSection />
+        <RWASection />
+        <VaultsSection />
+        <Liquidity />
+        <Security />
+        <MonadSection />
+        <ProductPreview />
+        <HowItWorks />
+        <FinalCTA />
+        <LandingFooter />
+      </main>
+    </MotionConfig>
   );
 }

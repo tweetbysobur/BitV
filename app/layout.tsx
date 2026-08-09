@@ -4,9 +4,18 @@ import { Web3Provider } from "@/components/providers/web3-provider";
 import { siteConfig } from "@/config/site";
 import "./globals.css";
 
+const title = `${siteConfig.name} | ${siteConfig.tagline}`;
+const description =
+  "An identity-native DeFi protocol on Monad powered by verified identity, risk intelligence, and asset-aware infrastructure.";
+
 export const metadata: Metadata = {
-  title: `${siteConfig.name} — ${siteConfig.tagline}`,
-  description: `${siteConfig.name} is an identity-native DeFi protocol on ${siteConfig.network}, built on ${siteConfig.infrastructure}.`,
+  title,
+  description,
+  openGraph: {
+    title,
+    description,
+    type: "website",
+  },
 };
 
 // Web3Provider constructs the RainbowKit/Wagmi config at render time, which
