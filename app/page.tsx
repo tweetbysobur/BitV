@@ -1,11 +1,27 @@
-import { siteConfig } from "@/config/site";
+import { LandingNav } from "@/components/landing/LandingNav";
+import { Hero } from "@/components/landing/Hero";
+import { TrustInfrastructure } from "@/components/landing/TrustInfrastructure";
+import { ProtocolCapabilities } from "@/components/landing/ProtocolCapabilities";
+import { HowItWorks } from "@/components/landing/HowItWorks";
+import { RiskIntelligence } from "@/components/landing/RiskIntelligence";
+import { CompliantDeFi } from "@/components/landing/CompliantDeFi";
+import { ProtocolStatus } from "@/components/landing/ProtocolStatus";
+import { DashboardCTA } from "@/components/landing/DashboardCTA";
+import { LandingFooter } from "@/components/landing/LandingFooter";
 
 export default function HomePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
-      <p className="text-sm uppercase tracking-widest text-accent">{siteConfig.category}</p>
-      <h1 className="text-4xl font-semibold">{siteConfig.name}</h1>
-      <p className="text-muted-foreground max-w-md">{siteConfig.tagline}</p>
+    <main className="min-h-screen">
+      <LandingNav />
+      <Hero />
+      <TrustInfrastructure />
+      <ProtocolCapabilities />
+      <HowItWorks />
+      <RiskIntelligence />
+      <CompliantDeFi />
+      <ProtocolStatus />
+      <DashboardCTA />
+      <LandingFooter />
     </main>
   );
 }
