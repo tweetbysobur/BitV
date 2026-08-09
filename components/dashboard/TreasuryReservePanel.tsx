@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { DataStateView } from "./DataStateView";
 import { useTreasuryReserve, useClaimPoolReserve, useContractAddress } from "@/hooks";
 import { formatTokenAmount } from "@/lib/format";
@@ -57,9 +58,11 @@ export function TreasuryReservePanel() {
                     </div>
 
                     {isAdmin ? (
-                      <button
-                        type="button"
-                        disabled={row.reserveBalance === 0n || !treasuryAddress || !poolManagerAddress || isThisAssetClaiming}
+                      <Button
+                        variant="primary"
+                        className="h-8 px-3 text-xs"
+                        isLoading={isThisAssetClaiming}
+                        disabled={row.reserveBalance === 0n || !treasuryAddress || !poolManagerAddress}
                         onClick={() => {
                           if (!treasuryAddress || !poolManagerAddress) return;
                           setClaimingAsset(row.assetAddress);
@@ -71,10 +74,9 @@ export function TreasuryReservePanel() {
                             amount: BigInt(2) ** BigInt(256) - BigInt(1), // type(uint256).max — claim full accrued balance
                           });
                         }}
-                        className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
                       >
                         {isThisAssetClaiming ? "Claiming…" : "Claim reserve"}
-                      </button>
+                      </Button>
                     ) : null}
                   </div>
                 );

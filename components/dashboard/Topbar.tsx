@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { WalletStatus } from "./WalletStatus";
 import { NavLinks } from "./Sidebar";
+import { BitVMark } from "@/components/brand/BitVMark";
 
 /** Top bar for every screen size: wallet status always visible;
  * mobile-only collapsible nav trigger (the sidebar itself is hidden
@@ -24,7 +26,10 @@ export function Topbar() {
         >
           {mobileNavOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
         </button>
-        <span className="font-heading text-base font-semibold lg:hidden">BitV</span>
+        <Link href="/dashboard/overview" className="flex items-center gap-2 lg:hidden">
+          <BitVMark className="h-6 w-6" />
+          <span className="font-heading text-base font-semibold">BitV</span>
+        </Link>
       </div>
       <WalletStatus />
       {mobileNavOpen ? (

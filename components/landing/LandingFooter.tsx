@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { siteConfig } from "@/config/site";
+import { BitVLockup } from "@/components/brand/BitVMark";
 
 const LINKS = [
   { label: "Protocol", href: "#protocol" },
@@ -18,8 +19,8 @@ export function LandingFooter() {
     <footer className="border-t border-border px-6 py-10">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 text-center sm:flex-row sm:items-start sm:justify-between sm:text-left">
         <div>
-          <p className="font-heading text-base font-semibold">{siteConfig.name}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{siteConfig.tagline}</p>
+          <BitVLockup />
+          <p className="mt-2 text-sm text-muted-foreground">{siteConfig.tagline}</p>
         </div>
 
         <div className="flex flex-col items-center gap-3 text-sm sm:items-end">

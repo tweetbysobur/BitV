@@ -75,12 +75,23 @@
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-heading;
+    @apply font-heading tracking-tight;
+    line-height: 1.15;
   }
 
   :focus-visible {
     outline: 2px solid hsl(var(--accent));
     outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  /* Financial values (balances, health factor, BitScore, etc.) — fixed-
+     width digits so numbers don't visually jitter as they update, per
+     "large financial numbers should feel deliberate and easy to scan." */
+  .font-numeric {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
   }
 }
 

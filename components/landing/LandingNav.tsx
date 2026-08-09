@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { siteConfig } from "@/config/site";
+import { BitVLockup } from "@/components/brand/BitVMark";
+import { buttonVariants } from "@/components/ui/button";
 
 const LINKS = [
   { label: "Protocol", href: "#protocol" },
@@ -23,8 +24,8 @@ export function LandingNav() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur">
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <Link href="/" className="font-heading text-lg font-semibold tracking-tight">
-          {siteConfig.name}
+        <Link href="/" aria-label="BitV home">
+          <BitVLockup />
         </Link>
 
         <div className="hidden items-center gap-8 md:flex">
@@ -52,10 +53,7 @@ export function LandingNav() {
         </div>
 
         <div className="hidden md:block">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-          >
+          <Link href="/dashboard" className={buttonVariants("primary")}>
             Launch App
           </Link>
         </div>
@@ -98,7 +96,7 @@ export function LandingNav() {
             )}
             <Link
               href="/dashboard"
-              className="mt-2 inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+              className={buttonVariants("primary", "mt-2 w-full")}
               onClick={() => setOpen(false)}
             >
               Launch App

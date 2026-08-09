@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, Fingerprint, ShieldCheck, Gauge, Coins } from "lucide-react";
 import { siteConfig } from "@/config/site";
+import { buttonVariants } from "@/components/ui/button";
 
 const FLOW = [
   { label: "Identity", icon: Fingerprint },
@@ -67,17 +68,11 @@ export function Hero() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="mt-10 flex flex-col items-center gap-4 sm:flex-row"
         >
-          <Link
-            href="/dashboard"
-            className="group inline-flex items-center gap-2 rounded-md bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-          >
+          <Link href="/dashboard" className={buttonVariants("primary", "group h-12 px-6 text-sm")}>
             Launch App
             <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
           </Link>
-          <a
-            href="#protocol"
-            className="inline-flex items-center gap-2 rounded-md border border-border px-6 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-          >
+          <a href="#protocol" className={buttonVariants("secondary", "h-12 px-6 text-sm")}>
             Explore Protocol
           </a>
         </motion.div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Reveal } from "./Reveal";
+import { buttonVariants } from "@/components/ui/button";
 
 export function FinalCTA() {
   return (
@@ -10,10 +11,7 @@ export function FinalCTA() {
           The next generation of DeFi needs better trust infrastructure.
         </h2>
         <p className="mt-3 text-xl font-medium text-foreground/80">Build with BitV.</p>
-        <Link
-          href="/dashboard"
-          className="group mt-8 inline-flex items-center gap-2 rounded-md bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-        >
+        <Link href="/dashboard" className={buttonVariants("primary", "group mt-8 h-12 px-6 text-sm")}>
           Launch App
           <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
         </Link>
