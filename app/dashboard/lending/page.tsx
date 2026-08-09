@@ -135,7 +135,7 @@ export default function LendingPage() {
 
       <section className="flex flex-col gap-4">
         <SectionLabel>What you can do next</SectionLabel>
-        <SupplyWithdrawPanel actionsDisabled={cviBlocksActions} onPositionChanged={refetchPosition} />
+        <SupplyWithdrawPanel onPositionChanged={refetchPosition} />
         <CollateralBorrowPanel onPositionChanged={refetchPosition} actionsDisabled={cviBlocksActions} />
       </section>
     </div>

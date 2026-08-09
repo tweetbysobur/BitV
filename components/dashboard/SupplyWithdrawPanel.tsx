@@ -12,6 +12,7 @@ import {
   useDepositToPool,
   useWithdrawFromPool,
 } from "@/hooks";
+import { useCVIStatus } from "@/hooks/useCVIStatus";
 import { poolAssets } from "@/services/contracts/addresses";
 import { formatTokenAmount } from "@/lib/format";
 
@@ -28,17 +29,22 @@ const STATUS_LABEL: Record<string, string> = {
  * no real value). Approve-then-deposit is a standard two-step ERC-20
  * flow; withdraw is a single call. Every step waits for its own
  * transaction receipt before advancing — never shows "success" from a
- * submitted-but-unconfirmed transaction. */
-export function SupplyWithdrawPanel({
-  actionsDisabled,
-  onPositionChanged,
-}: {
-  actionsDisabled?: boolean;
-  onPositionChanged?: () => void;
-} = {}) {
+ * submitted-but-unconfirmed transaction.
+ *
+ * CVI gating is computed here against PoolManager itself, never passed
+ * down from a page-level prop scoped to a different contract:
+ * BitVPoolManager and BitVLendingManager are each their own
+ * BitVComplianceGuard instance (complianceVerify(address(this), user)),
+ * so a wallet's compliance on one is not guaranteed to match the
+ * other even though both happen to share the same unrestricted rule on
+ * the current testnet registration — see docs/cleanverse-dependency-lock.md. */
+export function SupplyWithdrawPanel({ onPositionChanged }: { onPositionChanged?: () => void } = {}) {
   const poolManagerAddress = useContractAddress("PoolManager");
   const asset = poolAssets[0] as { address: Address; chainId: number } | undefined;
   const decimals = 18;
+
+  const cvi = useCVIStatus(poolManagerAddress);
+  const actionsDisabled = !cvi.isLoading && cvi.status === "not-verified";
 
   const { balance, allowance, refetch } = useSupplyAllowance(asset?.address, poolManagerAddress);
   const { state: approveState, txHash: approveHash, errorMessage: approveError, approve, reset: resetApprove } = useApproveAsset();
