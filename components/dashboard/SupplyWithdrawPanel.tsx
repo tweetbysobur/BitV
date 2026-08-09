@@ -57,9 +57,10 @@ export function SupplyWithdrawPanel({ actionsDisabled }: { actionsDisabled?: boo
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Supply / Withdraw — BVTEST</CardTitle>
+        <CardTitle>1. Supply liquidity — BVTEST</CardTitle>
         <CardDescription>
-          Testnet-only asset, no real value. Wallet balance: {formatTokenAmount(balance, decimals, { maxFractionDigits: 4 })} BVTEST.
+          Adds to the pool other users borrow from. Testnet-only asset, no real value. Wallet balance:{" "}
+          {formatTokenAmount(balance, decimals, { maxFractionDigits: 4 })} BVTEST.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">

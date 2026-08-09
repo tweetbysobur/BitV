@@ -83,9 +83,10 @@ export function CollateralBorrowPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Collateral &amp; Borrow — BVTEST</CardTitle>
+        <CardTitle>2. Post collateral &amp; borrow — BVTEST</CardTitle>
         <CardDescription>
-          Testnet-only asset, no real value. Wallet balance: {formatTokenAmount(balance, decimals, { maxFractionDigits: 4 })} BVTEST.
+          Post BVTEST as collateral, then borrow against it. Testnet-only asset, no real value. Wallet balance:{" "}
+          {formatTokenAmount(balance, decimals, { maxFractionDigits: 4 })} BVTEST.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
