@@ -40,7 +40,7 @@ contract BitVInvariantTest is BaseProtocolTest {
         actors[1] = borrower;
         actors[2] = liquidator;
 
-        handler = new Handler(poolManager, lendingManager, debtAsset, collateralAsset, actors);
+        handler = new Handler(poolManager, lendingManager, treasury, debtAsset, collateralAsset, actors, admin);
 
         // Give the handler's actors collateral headroom so `borrow` calls
         // aren't immediately rejected by zero collateral in every run —
@@ -67,6 +67,16 @@ contract BitVInvariantTest is BaseProtocolTest {
         uint256 borrowed = poolManager.totalBorrowed(address(debtAsset));
         uint256 supplied = poolManager.totalSupplied(address(debtAsset));
         assertGe(available + borrowed, supplied);
+    }
+
+    /// Prompt 14: the treasury's reserve claims (interleaved by the
+    /// handler with ordinary supply/borrow/repay activity) can never
+    /// push the pool insolvent — its accrued-but-unclaimed reserve
+    /// balance is always covered by the pool's own accounting the same
+    /// way any other supplier's balance is, and never exceeds total
+    /// supply.
+    function invariant_TreasuryReserveNeverExceedsTotalSupply() public view {
+        assertLe(poolManager.reserveBalance(address(debtAsset)), poolManager.totalSupplied(address(debtAsset)));
     }
 
     /// 3. Compliance-protected actions cannot bypass the compliance

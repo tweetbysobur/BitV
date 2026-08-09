@@ -4,6 +4,65 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 14 — Treasury reserve-factor interest claim (Prompt 14)
+
+**Date:** 2026-08-09
+
+**Context:** Closes the treasury limitation flagged in Build 11 and
+restated in Prompt 13's audit: `BitVPoolManager.accrueInterest` credits
+reserve-factor interest to `BitVTreasury`'s address as ordinary scaled
+supply (the same mechanism any supplier's deposit uses), but nothing let
+`BitVTreasury` — a separate contract — realize that balance as real
+tokens, since `withdraw()` always operates on `msg.sender` and
+`BitVTreasury` never called it.
+
+**Solidity changes:**
+- `BitVPoolManager.sol` — new `claimReserve(address asset, uint256
+  amount)`, restricted to `msg.sender == TREASURY`, mirroring
+  `withdraw()`'s exact liquidity-index accounting but hard-scoped to
+  `_scaledSupply[asset][TREASURY]` (cannot touch any other address's
+  balance) and skipping `_requireCompliance` (not a user-eligibility
+  action). New view `reserveBalance(address asset)`. New event
+  `ReserveClaimed`.
+- `BitVTreasury.sol` — new `claimPoolReserve(address poolManager,
+  address asset, uint256 amount)`, gated by the existing
+  `PROTOCOL_ADMIN_ROLE` (no new role), calling
+  `BitVPoolManager.claimReserve` and emitting `PoolReserveClaimed`.
+  Existing `withdraw`/`receiveFee` unchanged.
+- `ProtocolErrors.sol` — new `CallerNotTreasury()`.
+
+No lending, borrowing, liquidation, BitScore, RWA, or vault logic
+touched. No new accounting system — this reuses the existing
+scaled-supply/liquidity-index mechanism end to end.
+
+**Tests:** new
+`contracts/test/unit/BitVTreasuryReserveClaim.t.sol` (18 tests: accrual,
+full/partial/repeated/zero claims, multiple pools kept independent,
+unauthorized caller, direct non-treasury caller, wrong/unregistered
+asset, insufficient reserve, reentrancy via a new
+`MockReentrantOnTransferERC20`, and post-claim supplier/borrower/pool-
+liquidity invariant checks). `test/invariant/Handler.sol` extended with
+a `claimReserve` action (admin-pranked, bounded to the pool's actual
+accrued reserve) interleaved with the existing deposit/withdraw/borrow/
+repay actions; new fuzzed `invariant_TreasuryReserveNeverExceedsTotalSupply`
+in `BitVInvariant.t.sol`.
+
+**Verification:** `forge build` clean; full Foundry suite and the
+new/updated invariant suite both run live (not assumed) — see final
+report for exact counts; Vitest unaffected (no frontend files touched
+this milestone — `services/contracts/addresses.ts` and dashboard reads
+already treat unclaimed reserve as simply part of treasury's pool
+balance, nothing to update there).
+
+**Remaining limitation:** operational, not architectural — claiming is
+still admin-triggered per pool (`PROTOCOL_ADMIN_ROLE` must call
+`claimPoolReserve`), there's no autonomous/scheduled auto-claim. This
+matches the rest of the protocol's admin-driven design and was not
+treated as a gap to fix, per this milestone's explicit scope (no new
+economic model, no governance).
+
+---
+
 ## Milestone 10 — Testnet deployment preparation (Build 10)
 
 **Date:** 2026-08-08

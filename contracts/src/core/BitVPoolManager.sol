@@ -42,6 +42,7 @@ contract BitVPoolManager is BitVComplianceGuard, BitVRoleConsumer, ReentrancyGua
     event BorrowedFromPool(address indexed asset, address indexed to, uint256 amount, uint256 scaledAmount);
     event RepaidToPool(address indexed asset, uint256 amount, uint256 scaledAmount);
     event InterestAccrued(address indexed asset, uint256 liquidityIndexRay, uint256 borrowIndexRay);
+    event ReserveClaimed(address indexed asset, uint256 amount, uint256 scaledAmount);
 
     struct PoolConfigParams {
         uint16 ltvBps;
@@ -260,6 +261,54 @@ contract BitVPoolManager is BitVComplianceGuard, BitVRoleConsumer, ReentrancyGua
         emit Withdrawn(asset, msg.sender, withdrawn, scaledAmount);
     }
 
+    /// @notice Lets the protocol treasury realize its own accrued
+    /// reserve-factor interest — the scaled-supply balance
+    /// `accrueInterest` has been crediting to `TREASURY` all along (see
+    /// its NatSpec). Mirrors `withdraw()`'s exact accounting (same
+    /// liquidity index, same available-liquidity bound) but is scoped
+    /// strictly to `_scaledSupply[asset][TREASURY]` and skips
+    /// `_requireCompliance` — this is the protocol claiming interest it
+    /// already owns by construction, not a user-facing eligibility
+    /// action, so CVI has nothing to check here. Only the treasury
+    /// contract itself may call this — never a generic withdraw
+    /// surface, and it can never touch any other address's balance.
+    function claimReserve(address asset, uint256 amount)
+        external
+        nonReentrant
+        poolActive(asset)
+        returns (uint256 claimed)
+    {
+        if (msg.sender != TREASURY) revert ProtocolErrors.CallerNotTreasury();
+
+        accrueInterest(asset);
+        DataTypes.Pool storage pool = _pools[asset];
+
+        uint256 scaledBalance = _scaledSupply[asset][TREASURY];
+        uint256 currentBalance = scaledBalance.rayMul(pool.liquidityIndexRay);
+
+        uint256 scaledAmount;
+        if (amount == type(uint256).max) {
+            scaledAmount = scaledBalance;
+            claimed = scaledAmount.rayMul(pool.liquidityIndexRay);
+        } else {
+            claimed = amount;
+            scaledAmount = claimed.rayDiv(pool.liquidityIndexRay);
+        }
+
+        if (claimed == 0) revert ProtocolErrors.ZeroAmount();
+        if (claimed > currentBalance) revert ProtocolErrors.AmountExceedsBalance(claimed, currentBalance);
+
+        uint256 available = availableLiquidity(asset);
+        if (claimed > available) revert ProtocolErrors.AmountExceedsAvailableLiquidity(claimed, available);
+
+        _scaledSupply[asset][TREASURY] = scaledBalance - scaledAmount;
+        pool.totalScaledSupply -= scaledAmount;
+
+        IERC20(asset).safeTransfer(TREASURY, claimed);
+
+        emit ReserveClaimed(asset, claimed, scaledAmount);
+    }
+
     // ── LendingManager-restricted liquidity movement ────────────────────
 
     function borrowFromPool(address asset, uint256 amount, address to)
@@ -366,6 +415,14 @@ contract BitVPoolManager is BitVComplianceGuard, BitVRoleConsumer, ReentrancyGua
 
     function getPool(address asset) external view returns (DataTypes.Pool memory) {
         return _pools[asset];
+    }
+
+    /// @notice The treasury's currently claimable reserve-factor
+    /// interest for `asset` — equivalent to `balanceOf(asset, TREASURY)`,
+    /// named explicitly so callers don't have to know the reserve is
+    /// tracked via the treasury's ordinary supplier balance.
+    function reserveBalance(address asset) external view returns (uint256) {
+        return _scaledSupply[asset][TREASURY].rayMul(_pools[asset].liquidityIndexRay);
     }
 
     function balanceOf(address asset, address user) external view returns (uint256) {

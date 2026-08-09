@@ -288,6 +288,77 @@ reverts since the handler swallows expected reverts internally):
   property doesn't depend on prior protocol state the way the pool/
   liquidity invariants do.
 
+## Treasury reserve-factor claim (Prompt 14)
+
+Previously documented gap (Build 11 / Prompt 13): `BitVTreasury` had no
+way to realize the reserve-factor interest `BitVPoolManager.accrueInterest`
+had been crediting it since Build 03. This milestone closes that gap
+without introducing a second accounting system.
+
+**Where the interest already sits.** `accrueInterest` (per-pool, in
+`BitVPoolManager`) has always split each period's borrow-interest into
+a supplier share and a reserve share (`pool.reserveFactorBps`). The
+reserve share is converted to scaled supply and credited to
+`_scaledSupply[asset][TREASURY]` — the exact same mechanism as any
+supplier's deposit, compounding via the pool's own `liquidityIndexRay`.
+The underlying tokens were never moved anywhere: they're part of
+`BitVPoolManager`'s own ERC20 balance the whole time, exactly like a
+regular supplier's undrawn balance. The only gap was that nothing let
+`TREASURY`'s address realize that scaled-supply position, since
+`withdraw()` always operates on `msg.sender`, and `BitVTreasury` (a
+separate contract) never called it.
+
+**The fix.** Two additions, no new ledger:
+
+1. `BitVPoolManager.claimReserve(address asset, uint256 amount)` — new
+   function, restricted to `msg.sender == TREASURY` (reverts
+   `CallerNotTreasury()` otherwise). Mirrors `withdraw()`'s exact
+   accounting (same `liquidityIndexRay` math, same
+   `availableLiquidity` bound, same `type(uint256).max` "claim
+   everything" convention) but is hard-scoped to
+   `_scaledSupply[asset][TREASURY]` — it can never read or debit any
+   other address's balance. It deliberately skips `_requireCompliance`:
+   CVI eligibility is a *user* on-ramp check, and the treasury claiming
+   interest it already owns by construction isn't a user action for
+   Cleanverse to gate. `nonReentrant` + checks-effects-interactions
+   (state debited before the `safeTransfer` out), identical to
+   `withdraw()`. A companion view, `reserveBalance(address asset)`,
+   exposes the treasury's current claimable balance without requiring
+   callers to know it's tracked via the ordinary supplier-balance
+   mechanism.
+2. `BitVTreasury.claimPoolReserve(address poolManager, address asset,
+   uint256 amount)` — new function, gated by the existing
+   `PROTOCOL_ADMIN_ROLE` (no new role introduced), that simply calls
+   `BitVPoolManager(poolManager).claimReserve(asset, amount)` and emits
+   `PoolReserveClaimed`. `BitVTreasury.withdraw` (pre-existing,
+   unchanged) then moves the now-real ERC20 balance out to wherever the
+   admin directs, exactly as it always has for liquidation/vault fees.
+
+**Properties preserved:** claiming pool A's reserve cannot affect pool
+B's accounting (separate `_pools`/`_scaledSupply` entries per asset);
+claiming never touches supplier or borrower balances (those live under
+different map keys); zero-amount and over-claim both revert cleanly
+(`ZeroAmount`, `AmountExceedsBalance`); repeated claims and partial
+claims both work identically to a supplier doing repeated partial
+withdrawals, because it *is* that same code path, just address-scoped
+to `TREASURY`. Verified by
+`contracts/test/unit/BitVTreasuryReserveClaim.t.sol` (18 tests:
+accrual, full/partial/repeated/zero claims, multiple pools, wrong
+asset, insufficient reserve, unauthorized caller, direct
+non-treasury caller, reentrancy, and post-claim supplier/borrower/
+liquidity invariant checks) and a new invariant,
+`invariant_TreasuryReserveNeverExceedsTotalSupply`, fuzzed together
+with ordinary deposit/borrow/repay/withdraw activity via the shared
+`Handler` (256 runs × 500 calls).
+
+**Remaining limitation:** none identified for the accounting model
+itself. The one adjacent, still-open item is operational rather than
+architectural — `PROTOCOL_ADMIN_ROLE` must actually call
+`claimPoolReserve` per pool periodically (there's no auto-claim
+trigger, matching the rest of the protocol's admin-driven-not-
+autonomous design); this is a scheduling/ops concern, not a contract
+gap.
+
 ## Known limitations (summary)
 
 - Rounding is symmetric, not protocol-favoring (see Interest above).

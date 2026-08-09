@@ -20,6 +20,7 @@ library ProtocolErrors {
     error PriceOracleNotSet(address asset);
     error ZeroAddress();
     error CallerNotLendingManager();
+    error CallerNotTreasury();
     error InvalidRiskParams();
     error Unauthorized(address caller, bytes32 role);
     error ZeroPrice(address asset);

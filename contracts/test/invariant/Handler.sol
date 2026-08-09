@@ -5,6 +5,7 @@ import {StdUtils} from "forge-std/StdUtils.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {BitVPoolManager} from "../../src/core/BitVPoolManager.sol";
 import {BitVLendingManager} from "../../src/core/BitVLendingManager.sol";
+import {BitVTreasury} from "../../src/core/BitVTreasury.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
 /// @notice Bounded-random-action handler for BitV's pool/lending
@@ -18,23 +19,29 @@ contract Handler is StdUtils {
 
     BitVPoolManager public poolManager;
     BitVLendingManager public lendingManager;
+    BitVTreasury public treasury;
     MockERC20 public debtAsset;
     MockERC20 public collateralAsset;
+    address public protocolAdmin;
 
     address[] public actors;
 
     constructor(
         BitVPoolManager poolManager_,
         BitVLendingManager lendingManager_,
+        BitVTreasury treasury_,
         MockERC20 debtAsset_,
         MockERC20 collateralAsset_,
-        address[] memory actors_
+        address[] memory actors_,
+        address protocolAdmin_
     ) {
         poolManager = poolManager_;
         lendingManager = lendingManager_;
+        treasury = treasury_;
         debtAsset = debtAsset_;
         collateralAsset = collateralAsset_;
         actors = actors_;
+        protocolAdmin = protocolAdmin_;
     }
 
     function _actor(uint256 seed) internal view returns (address) {
@@ -94,5 +101,19 @@ contract Handler is StdUtils {
         debtAsset.approve(address(lendingManager), boundedAmount);
         try lendingManager.repay(address(debtAsset), boundedAmount) {} catch {}
         VM.stopPrank();
+    }
+
+    /// @notice Exercises the treasury's reserve-factor claim path
+    /// (Prompt 14) interleaved with ordinary supply/borrow/repay
+    /// activity, so the pool-solvency invariants below are checked
+    /// against sequences that include claims, not just the pre-existing
+    /// action set.
+    function claimReserve(uint96 amountSeed) external {
+        uint256 reserve = poolManager.reserveBalance(address(debtAsset));
+        if (reserve == 0) return;
+        uint256 boundedAmount = bound(amountSeed, 1, reserve);
+
+        VM.prank(protocolAdmin);
+        try treasury.claimPoolReserve(address(poolManager), address(debtAsset), boundedAmount) {} catch {}
     }
 }
