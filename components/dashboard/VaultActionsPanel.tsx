@@ -12,6 +12,7 @@ import {
   useVaultDeposit,
   useVaultWithdraw,
 } from "@/hooks/useVaultActions";
+import { useCVIStatus } from "@/hooks/useCVIStatus";
 import { formatTokenAmount } from "@/lib/format";
 import type { VaultPositionRow } from "@/hooks/useVaultPositions";
 
@@ -31,6 +32,9 @@ const STATUS_LABEL: Record<string, string> = {
 export function VaultActionsPanel({ vault, onChanged }: { vault: VaultPositionRow; onChanged?: () => void }) {
   const { address: account } = useAccount();
   const decimals = 18;
+
+  const cvi = useCVIStatus(vault.vaultAddress);
+  const cviBlocksActions = !cvi.isLoading && cvi.status === "not-verified";
 
   const { balance, allowance, refetch } = useVaultAllowance(vault.underlyingAsset, vault.vaultAddress);
   const { state: approveState, txHash: approveHash, errorMessage: approveError, approve, reset: resetApprove } = useApproveVaultAsset();
@@ -53,9 +57,13 @@ export function VaultActionsPanel({ vault, onChanged }: { vault: VaultPositionRo
   const parsedDeposit = depositAmount ? safeParse(depositAmount, decimals) : undefined;
   const parsedWithdraw = withdrawAmount ? safeParse(withdrawAmount, decimals) : undefined;
   const needsApproval = parsedDeposit !== undefined && (allowance === undefined || allowance < parsedDeposit);
+  const depositExceedsBalance = parsedDeposit !== undefined && balance !== undefined && parsedDeposit > balance;
+  const withdrawExceedsMax =
+    parsedWithdraw !== undefined && vault.maxWithdrawAssets !== undefined && parsedWithdraw > vault.maxWithdrawAssets;
 
-  const depositBusy = approveState === "pending" || approveState === "confirming" || depositState === "pending" || depositState === "confirming";
-  const withdrawBusy = withdrawState === "pending" || withdrawState === "confirming";
+  const depositBusy =
+    cviBlocksActions || approveState === "pending" || approveState === "confirming" || depositState === "pending" || depositState === "confirming";
+  const withdrawBusy = cviBlocksActions || withdrawState === "pending" || withdrawState === "confirming";
 
   if (vault.depositsPaused && vault.withdrawalsPaused) {
     return (
@@ -101,7 +109,7 @@ export function VaultActionsPanel({ vault, onChanged }: { vault: VaultPositionRo
                 type="button"
                 variant="primary"
                 isLoading={approveState === "pending" || approveState === "confirming"}
-                disabled={!parsedDeposit || depositBusy || vault.depositsPaused === true}
+                disabled={!parsedDeposit || depositExceedsBalance || depositBusy || vault.depositsPaused === true}
                 onClick={() => {
                   if (!parsedDeposit || !vault.underlyingAsset) return;
                   approve({ assetAddress: vault.underlyingAsset, spender: vault.vaultAddress, amount: parsedDeposit });
@@ -114,7 +122,7 @@ export function VaultActionsPanel({ vault, onChanged }: { vault: VaultPositionRo
                 type="button"
                 variant="primary"
                 isLoading={depositState === "pending" || depositState === "confirming"}
-                disabled={!parsedDeposit || depositBusy || vault.depositsPaused === true}
+                disabled={!parsedDeposit || depositExceedsBalance || depositBusy || vault.depositsPaused === true}
                 onClick={() => {
                   if (!parsedDeposit || !account) return;
                   deposit({ vaultAddress: vault.vaultAddress, assets: parsedDeposit, receiver: account });
@@ -124,7 +132,11 @@ export function VaultActionsPanel({ vault, onChanged }: { vault: VaultPositionRo
               </Button>
             )}
           </div>
-          {vault.depositsPaused ? <p className="text-xs text-muted-foreground">Deposits are currently paused on this vault.</p> : null}
+          {vault.depositsPaused ? <p className="text-xs text-destructive">Deposits are currently paused on this vault.</p> : null}
+          {depositExceedsBalance ? <p className="text-xs text-destructive">Amount exceeds your wallet balance.</p> : null}
+          {cviBlocksActions ? (
+            <p className="text-xs text-destructive">CVI required — complete Cleanverse verification before using this vault.</p>
+          ) : null}
           <ActionStatus
             state={approveState !== "idle" ? approveState : depositState}
             txHash={approveHash ?? depositHash}
@@ -154,7 +166,7 @@ export function VaultActionsPanel({ vault, onChanged }: { vault: VaultPositionRo
               type="button"
               variant="secondary"
               isLoading={withdrawBusy}
-              disabled={!parsedWithdraw || withdrawBusy || vault.withdrawalsPaused === true}
+              disabled={!parsedWithdraw || withdrawExceedsMax || withdrawBusy || vault.withdrawalsPaused === true}
               onClick={() => {
                 if (!parsedWithdraw || !account) return;
                 withdraw({ vaultAddress: vault.vaultAddress, assets: parsedWithdraw, receiver: account, owner: account });
@@ -163,7 +175,18 @@ export function VaultActionsPanel({ vault, onChanged }: { vault: VaultPositionRo
               Withdraw
             </Button>
           </div>
-          {vault.withdrawalsPaused ? <p className="text-xs text-muted-foreground">Withdrawals are currently paused on this vault.</p> : null}
+          {vault.withdrawalsPaused ? <p className="text-xs text-destructive">Withdrawals are currently paused on this vault.</p> : null}
+          {withdrawExceedsMax ? (
+            <p className="text-xs text-destructive">
+              Amount exceeds what the vault can currently return
+              {vault.maxWithdrawAssets !== undefined
+                ? ` (max ${formatTokenAmount(vault.maxWithdrawAssets, decimals, { maxFractionDigits: 4 })}).`
+                : "."}
+            </p>
+          ) : null}
+          {cviBlocksActions ? (
+            <p className="text-xs text-destructive">CVI required — complete Cleanverse verification before using this vault.</p>
+          ) : null}
           <ActionStatus state={withdrawState} txHash={withdrawHash} errorMessage={withdrawError} />
         </div>
       </CardContent>

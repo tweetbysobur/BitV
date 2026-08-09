@@ -15,9 +15,13 @@ export function VaultPositionCard({ vault }: { vault: VaultPositionRow }) {
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
           <dt className="text-muted-foreground">Underlying asset</dt>
           <dd>{vault.underlyingAsset ?? "Unavailable"}</dd>
+          <dt className="text-muted-foreground">Your deposit (asset value)</dt>
+          <dd className="tabular-nums">{formatTokenAmount(vault.userUnderlyingValue, 18)}</dd>
           <dt className="text-muted-foreground">Your shares</dt>
-          <dd className="tabular-nums">{formatTokenAmount(vault.userShares, 18)}</dd>
-          <dt className="text-muted-foreground">Total assets</dt>
+          <dd className="tabular-nums">
+            {vault.shareDecimals !== undefined ? formatTokenAmount(vault.userShares, vault.shareDecimals) : "Unavailable"}
+          </dd>
+          <dt className="text-muted-foreground">Total assets in vault</dt>
           <dd className="tabular-nums">{formatTokenAmount(vault.totalAssets, 18)}</dd>
           <dt className="text-muted-foreground">Current strategy</dt>
           <dd>{getStrategyLabel(vault.isTestStrategy)}</dd>
