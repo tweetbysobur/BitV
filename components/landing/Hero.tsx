@@ -2,8 +2,15 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Fingerprint, ShieldCheck, Gauge, Coins } from "lucide-react";
 import { siteConfig } from "@/config/site";
+
+const FLOW = [
+  { label: "Identity", icon: Fingerprint },
+  { label: "Trust", icon: ShieldCheck },
+  { label: "Risk", icon: Gauge },
+  { label: "Capital", icon: Coins },
+];
 
 export function Hero() {
   return (
@@ -20,7 +27,7 @@ export function Hero() {
           transition={{ duration: 0.5 }}
           className="mb-6 rounded-full border border-border px-3 py-1 text-xs font-medium uppercase tracking-widest text-accent"
         >
-          {siteConfig.category}
+          Identity-native DeFi
         </motion.p>
 
         <motion.h1
@@ -47,11 +54,11 @@ export function Hero() {
           transition={{ duration: 0.6, delay: 0.15 }}
           className="mt-6 max-w-2xl text-balance text-base text-muted-foreground sm:text-lg"
         >
-          BitV is an identity-native DeFi protocol. Access is gated by Cleanverse
-          CVI eligibility, lending parameters are shaped by BitV&apos;s own
-          on-chain risk signal (BitScore), and collateral can include
-          compliance-aware RWA assets alongside standard pool markets —
-          all enforced directly by the protocol&apos;s smart contracts.
+          BitV combines verified identity, on-chain risk intelligence, and
+          asset-aware infrastructure to power trusted financial markets on
+          Monad — verified access, risk-adjusted lending, compliance-aware
+          RWA collateral, and permissioned yield vaults, all enforced directly
+          by the protocol&apos;s smart contracts.
         </motion.p>
 
         <motion.div
@@ -68,11 +75,32 @@ export function Hero() {
             <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
           </Link>
           <a
-            href="#capabilities"
+            href="#protocol"
             className="inline-flex items-center gap-2 rounded-md border border-border px-6 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
           >
             Explore Protocol
           </a>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.28 }}
+          className="mt-16 flex w-full max-w-xl items-center justify-between"
+        >
+          {FLOW.map((step, i) => (
+            <div key={step.label} className="flex items-center">
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card">
+                  <step.icon size={18} className="text-accent" />
+                </div>
+                <span className="text-xs text-muted-foreground">{step.label}</span>
+              </div>
+              {i < FLOW.length - 1 && (
+                <div className="mx-2 h-px w-8 bg-border sm:w-14" aria-hidden />
+              )}
+            </div>
+          ))}
         </motion.div>
       </div>
     </section>

@@ -1,26 +1,42 @@
 import { LandingNav } from "@/components/landing/LandingNav";
 import { Hero } from "@/components/landing/Hero";
-import { TrustInfrastructure } from "@/components/landing/TrustInfrastructure";
-import { ProtocolCapabilities } from "@/components/landing/ProtocolCapabilities";
-import { HowItWorks } from "@/components/landing/HowItWorks";
+import { InfrastructureStrip } from "@/components/landing/InfrastructureStrip";
+import { Problem } from "@/components/landing/Problem";
+import { Solution } from "@/components/landing/Solution";
+import { Architecture } from "@/components/landing/Architecture";
 import { RiskIntelligence } from "@/components/landing/RiskIntelligence";
-import { CompliantDeFi } from "@/components/landing/CompliantDeFi";
-import { ProtocolStatus } from "@/components/landing/ProtocolStatus";
-import { DashboardCTA } from "@/components/landing/DashboardCTA";
+import { LendingSection } from "@/components/landing/LendingSection";
+import { RWASection } from "@/components/landing/RWASection";
+import { VaultsSection } from "@/components/landing/VaultsSection";
+import { Liquidity } from "@/components/landing/Liquidity";
+import { Security } from "@/components/landing/Security";
+import { MonadSection } from "@/components/landing/MonadSection";
+import { ProductPreview } from "@/components/landing/ProductPreview";
+import { HowItWorks } from "@/components/landing/HowItWorks";
+import { FinalCTA } from "@/components/landing/FinalCTA";
 import { LandingFooter } from "@/components/landing/LandingFooter";
+import { ProtocolCapabilities } from "@/components/landing/ProtocolCapabilities";
 
 export default function HomePage() {
   return (
     <main className="min-h-screen">
       <LandingNav />
       <Hero />
-      <TrustInfrastructure />
+      <InfrastructureStrip />
+      <Problem />
+      <Solution />
+      <Architecture />
       <ProtocolCapabilities />
-      <HowItWorks />
       <RiskIntelligence />
-      <CompliantDeFi />
-      <ProtocolStatus />
-      <DashboardCTA />
+      <LendingSection />
+      <RWASection />
+      <VaultsSection />
+      <Liquidity />
+      <Security />
+      <MonadSection />
+      <ProductPreview />
+      <HowItWorks />
+      <FinalCTA />
       <LandingFooter />
     </main>
   );

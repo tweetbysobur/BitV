@@ -6,10 +6,15 @@ import { Menu, X } from "lucide-react";
 import { siteConfig } from "@/config/site";
 
 const LINKS = [
-  { label: "Protocol", href: "#capabilities" },
-  { label: "How it works", href: "#how-it-works" },
-  { label: "Risk", href: "#risk-intelligence" },
-  { label: "Compliance", href: "#compliance" },
+  { label: "Protocol", href: "#protocol" },
+  { label: "Risk", href: "#risk" },
+  { label: "RWA", href: "#rwa" },
+  { label: "Vaults", href: "#vaults" },
+  {
+    label: "Docs",
+    href: "https://github.com/tweetbysobur/BitV/tree/main/docs",
+    external: true,
+  },
 ];
 
 export function LandingNav() {
@@ -23,15 +28,27 @@ export function LandingNav() {
         </Link>
 
         <div className="hidden items-center gap-8 md:flex">
-          {LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {link.label}
-            </a>
-          ))}
+          {LINKS.map((link) =>
+            link.external ? (
+              <a
+                key={link.label}
+                href={link.href}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {link.label}
+              </a>
+            ) : (
+              <a
+                key={link.label}
+                href={link.href}
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {link.label}
+              </a>
+            )
+          )}
         </div>
 
         <div className="hidden md:block">
@@ -56,16 +73,29 @@ export function LandingNav() {
       {open && (
         <div className="border-t border-border px-6 py-4 md:hidden">
           <div className="flex flex-col gap-4">
-            {LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="text-sm text-muted-foreground hover:text-foreground"
-                onClick={() => setOpen(false)}
-              >
-                {link.label}
-              </a>
-            ))}
+            {LINKS.map((link) =>
+              link.external ? (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-sm text-muted-foreground hover:text-foreground"
+                  onClick={() => setOpen(false)}
+                >
+                  {link.label}
+                </a>
+              ) : (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  className="text-sm text-muted-foreground hover:text-foreground"
+                  onClick={() => setOpen(false)}
+                >
+                  {link.label}
+                </a>
+              )
+            )}
             <Link
               href="/dashboard"
               className="mt-2 inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
