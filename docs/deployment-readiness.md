@@ -354,3 +354,17 @@ entry and the Prompt 15 final report. See
 for the specific consequence: the live Build 11 addresses predate
 Prompt 14's `claimReserve`/`claimPoolReserve` code, so that
 functionality has never been exercised on real Monad Testnet state.
+
+## Prompt 16 status (2026-08-09)
+
+Re-checked live this session: `testnet-rpc.monad.xyz`,
+`docs.cleanverse.com`, and `uatapi.cleanverse.com` still all return
+`403 CONNECT tunnel failed` from this sandbox — no change from Prompt
+15. The fresh deployment, live validation, live Cleanverse
+re-verification, and 18-step live smoke test Prompt 16 requested remain
+unexecuted for the same reason. What Prompt 16 *could* close from this
+sandbox was closed: the Treasury reserve-claim dashboard gap Prompt 15
+identified now has a real hook, ABI, and UI panel (`/dashboard/settings`),
+covered by 8 new Vitest tests — see `docs/development-log.md`'s
+Milestone 16 entry. `services/contracts/addresses.ts` is unchanged; no
+fresh deployment exists to populate it with.

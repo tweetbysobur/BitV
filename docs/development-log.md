@@ -4,6 +4,77 @@ Every milestone updates this file. Newest entry first.
 
 ---
 
+## Milestone 16 — Treasury reserve-claim dashboard wiring; fresh deployment still blocked (Prompt 16)
+
+**Date:** 2026-08-09
+
+**Context:** Direct continuation of Prompt 15's blocker report. Prompt
+16 asked for the fresh Monad Testnet deployment, live re-verification,
+live 18-step smoke test, and the one identified dashboard gap
+(Treasury reserve-claim UI) to be closed.
+
+**What was executed for real:**
+- Live connectivity re-check: `testnet-rpc.monad.xyz`,
+  `docs.cleanverse.com`, `uatapi.cleanverse.com` all tested again this
+  session — all three still return `403 CONNECT tunnel failed` from
+  this sandbox. No fresh deployment, no live validation, no live
+  Cleanverse re-verification, and no live 18-step smoke test could be
+  executed. Nothing was fabricated to fill any of these.
+- **Treasury reserve-claim dashboard wiring (the one gap this sandbox
+  actually could close):**
+  - `services/contracts/abis/bitVPoolManager.ts` — added
+    `reserveBalance`.
+  - `services/contracts/abis/bitVTreasury.ts` (new) —
+    `claimPoolReserve` + `PoolReserveClaimed`.
+  - `services/contracts/abis/bitVAccessManager.ts` (new) — `hasRole` +
+    `PROTOCOL_ADMIN_ROLE` getter.
+  - `lib/treasury.ts` (new) — `PROTOCOL_ADMIN_ROLE` constant (verified
+    against `cast keccak "PROTOCOL_ADMIN_ROLE"`, not assumed) and a
+    pure `deriveClaimPoolReserveState` function so "never show success
+    before the receipt confirms" is unit-testable.
+  - `hooks/useTreasuryReserve.ts` (new) — reads
+    `BitVPoolManager.reserveBalance` per configured pool asset plus
+    whether the connected wallet holds `PROTOCOL_ADMIN_ROLE`.
+  - `hooks/useClaimPoolReserve.ts` (new) — write path for
+    `BitVTreasury.claimPoolReserve` with distinct
+    idle/pending/confirming/success/error states.
+  - `components/dashboard/TreasuryReservePanel.tsx` (new) — the admin
+    panel, added to `/dashboard/settings`. Read-only for non-admins;
+    claim button only rendered/enabled for `PROTOCOL_ADMIN_ROLE`
+    holders, with explicit "Treasury Administration" labeling, tx hash
+    display on success, and a distinct error state on revert/rejection.
+  - `tests/treasury.test.ts` (new) — 8 tests: the role-hash matches
+    `cast keccak`'s ground truth, and every branch of the
+    idle/pending/confirming/success/error derivation, including the
+    specific "never reports success from the write status alone"
+    property.
+- Full regression run live this session: `forge build` (no
+  recompilation needed, no Solidity changed), `forge test` 240/240 (0
+  regressions — matches Prompt 14's confirmed count exactly),
+  `npm run lint` clean, `npm run build` succeeds (same two pre-existing
+  optional-dependency warnings), Vitest 49/49 (41 baseline + 8 new).
+- Static security review of the new frontend code: no localhost/Anvil
+  references, no hardcoded addresses, no `console.*` debug output, no
+  secrets.
+
+**Not executed (blocked, not fabricated):** fresh `Deploy.s.sol`
+broadcast, live `ValidateDeployment.s.sol` run, live Cleanverse
+validator/CVI/registration re-verification, the 18-step live smoke
+test (items 1-4, 10-18 depend on live chain state; the dashboard's
+reserve-claim UI itself was verified only via code review + Vitest,
+never against a live transaction), dashboard manual verification with
+a connected wallet against fresh addresses. `services/contracts/addresses.ts`
+was **not** changed — no fresh deployment exists to populate it with,
+and Prompt 16 explicitly forbids using stale or fabricated addresses.
+
+**Final decision:** **NOT READY** for controlled public Monad Testnet
+testing under Prompt 16's bar. Blocked purely on this sandbox's network
+access to Monad Testnet RPC and Cleanverse's API — not on any code,
+test, or architecture defect. See the Prompt 16 final report for the
+full launch-readiness matrix and the smallest next action.
+
+---
+
 ## Milestone 15 — Final Monad Testnet deployment attempt (Prompt 15)
 
 **Date:** 2026-08-09

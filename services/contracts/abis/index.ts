@@ -1,4 +1,6 @@
 export { bitVPoolManagerAbi } from "./bitVPoolManager";
+export { bitVTreasuryAbi } from "./bitVTreasury";
+export { bitVAccessManagerAbi } from "./bitVAccessManager";
 export { bitVLendingManagerAbi } from "./bitVLendingManager";
 export { bitScoreManagerAbi } from "./bitScoreManager";
 export { bitVYieldVaultAbi } from "./bitVYieldVault";

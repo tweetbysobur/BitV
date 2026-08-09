@@ -1,9 +1,13 @@
 /**
- * Read-only ABI fragment for BitVPoolManager — transcribed directly from
+ * ABI fragment for BitVPoolManager — transcribed directly from
  * contracts/src/core/BitVPoolManager.sol (BitV's own contract, not a
- * Cleanverse primitive). Only the view functions the dashboard actually
- * reads are included; write functions are intentionally omitted from
- * this milestone's read-only data layer.
+ * Cleanverse primitive). Mostly view functions the dashboard reads;
+ * `reserveBalance` (Prompt 14) is the one addition used by the
+ * Treasury reserve-claim admin panel (Prompt 16) — see
+ * services/contracts/abis/bitVTreasury.ts for the actual claim call,
+ * which goes through BitVTreasury.claimPoolReserve, not this contract
+ * directly (BitVPoolManager.claimReserve only accepts msg.sender ==
+ * TREASURY, so the frontend never calls it on PoolManager itself).
  */
 export const bitVPoolManagerAbi = [
   {
@@ -82,5 +86,12 @@ export const bitVPoolManagerAbi = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "reserveBalance",
+    stateMutability: "view",
+    inputs: [{ name: "asset", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
   },
 ] as const;

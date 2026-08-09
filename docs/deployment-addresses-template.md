@@ -34,6 +34,17 @@ roots for `BitVLendingManager`/`BitVRWACollateralRegistry`/any vault —
 practically, a full redeploy) is required before Build 14 can be
 exercised on real testnet state.
 
+## Prompt 16 status (2026-08-09) — still not redeployed
+
+Re-attempted this session: `testnet-rpc.monad.xyz` still returns `403
+CONNECT tunnel failed` from this sandbox. The table below is
+**unchanged from Build 11** — every address still predates Prompt 14's
+reserve-claim code, exactly as noted above. Prompt 16's frontend-only
+deliverable (the Treasury reserve-claim dashboard panel) was completed
+against these existing addresses' ABI shape and is ready to read/write
+against a fresh deployment the moment one exists — it required no
+address to build, only the contract interfaces.
+
 ## Monad Testnet (chain ID 10143)
 
 | Contract | Address | Deployed | Validated (`ValidateDeployment.s.sol`) |

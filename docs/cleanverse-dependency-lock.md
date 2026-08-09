@@ -73,6 +73,15 @@ BitV team, executing directly against the real sandbox API from their
 own terminal) — nothing here was re-verified or changed this session,
 and nothing was invented to fill the gap.
 
+## Prompt 16 status (2026-08-09)
+
+Re-checked live this session: `docs.cleanverse.com` and
+`uatapi.cleanverse.com` both still return `403 CONNECT tunnel failed`
+from this sandbox. No change to any fact in this document. CVI/CVA/
+BitScore separation remains as documented — no new Cleanverse
+functionality (including `canTransfer`) was implemented or invented
+this milestone either.
+
 ## Where this table supersedes/consolidates
 
 This table restates, in the exact format Build 10 Phase 8 asks for, facts

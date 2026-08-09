@@ -315,3 +315,16 @@ deployment. A dedicated frontend check found the Prompt 14 reserve-claim
 functionality has no dashboard hook, component, or updated ABI entry —
 see the Prompt 15 final report for detail; this is unrelated to the
 network-egress block and is a real frontend gap on its own.
+
+## Prompt 16 status (2026-08-09)
+
+Re-attempted this session: `testnet-rpc.monad.xyz` still returns `403
+CONNECT tunnel failed`, so the 18-item live smoke test (Prompt 16
+item 8) remains **not executed** — no fresh deployment exists to run
+it against. Item 17 (Treasury reserve claim) specifically: the
+frontend gap noted above is now closed in code (new
+`TreasuryReservePanel` on `/dashboard/settings`, reads
+`reserveBalance`/writes `claimPoolReserve`, gated to
+`PROTOCOL_ADMIN_ROLE`), verified via 8 new Vitest tests and manual code
+review — but **not** verified against a live transaction, since that
+requires the still-blocked live deployment.

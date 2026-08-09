@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useWalletStatus } from "@/hooks/useWalletStatus";
 import { monadTestnet } from "@/config/chains";
+import { TreasuryReservePanel } from "@/components/dashboard/TreasuryReservePanel";
 
 export default function SettingsPage() {
   const { address, chainId, state } = useWalletStatus();
@@ -32,6 +33,8 @@ export default function SettingsPage() {
           <span>Expected chain ID: {monadTestnet.id}</span>
         </CardContent>
       </Card>
+
+      <TreasuryReservePanel />
     </div>
   );
 }

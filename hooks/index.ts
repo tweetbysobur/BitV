@@ -8,3 +8,5 @@ export { useRWAAssets } from "./useRWAAssets";
 export { useVaultPositions } from "./useVaultPositions";
 export { usePoolPositions } from "./usePoolPositions";
 export { useActivity } from "./useActivity";
+export { useTreasuryReserve } from "./useTreasuryReserve";
+export { useClaimPoolReserve } from "./useClaimPoolReserve";
