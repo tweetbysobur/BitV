@@ -6,6 +6,7 @@ import { HealthFactorCard } from "@/components/dashboard/HealthFactorCard";
 import { BorrowingCapacityCard } from "@/components/dashboard/BorrowingCapacityCard";
 import { CollateralTable } from "@/components/dashboard/CollateralTable";
 import { DebtTable } from "@/components/dashboard/DebtTable";
+import { SupplyWithdrawPanel } from "@/components/dashboard/SupplyWithdrawPanel";
 import { useWalletStatus } from "@/hooks/useWalletStatus";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
 import { formatBps } from "@/lib/format";
@@ -21,6 +22,8 @@ export default function LendingPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="font-heading text-2xl font-semibold">Lending</h1>
+
+      <SupplyWithdrawPanel />
 
       <DataStateView state={position} loadingLabel="Reading lending position">
         {(data) => (
