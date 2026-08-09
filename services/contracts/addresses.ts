@@ -58,3 +58,22 @@ export const rwaAssets: readonly DeployedContract[] = [
 export const poolAssets: readonly DeployedContract[] = [
   { address: "0xD031f2F863dd481a869814CaE6813b17590C3B45", chainId: 10143 },
 ];
+
+/**
+ * False on purpose. The currently deployed `PoolManager`/`Treasury`
+ * above (Build 11, commit `4a8cd14`) were broadcast *before* Prompt
+ * 14's `BitVPoolManager.claimReserve` / `BitVTreasury.claimPoolReserve`
+ * code existed (commit `b751893`) — see
+ * docs/deployment-addresses-template.md's "Prompt 15/16 status"
+ * sections. The live bytecode at these addresses has no `reserveBalance`
+ * or `claimReserve` function selector at all, so calling either against
+ * them fails with an undecodable "no matching function" error, not a
+ * clean revert. This flag exists so the dashboard can short-circuit to
+ * an honest "not available on the currently deployed contracts" message
+ * instead of attempting a doomed read/write and surfacing a confusing
+ * RPC error. Flip to `true` only once PoolManager/Treasury are actually
+ * redeployed with Prompt 14's code and this file's addresses above are
+ * updated to point at the new deployment — never flip it independently
+ * of an address change.
+ */
+export const treasuryReserveClaimSupported = false;

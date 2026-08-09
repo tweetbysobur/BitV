@@ -6,7 +6,10 @@
  * here — this milestone's frontend scope is strictly the reserve-claim
  * flow closed in Prompt 14.
  */
+import { protocolErrorsAbi } from "./protocolErrors";
+
 export const bitVTreasuryAbi = [
+  ...protocolErrorsAbi,
   {
     type: "function",
     name: "claimPoolReserve",

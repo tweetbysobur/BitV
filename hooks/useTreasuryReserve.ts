@@ -4,7 +4,7 @@ import { useReadContracts } from "wagmi";
 import { bitVPoolManagerAbi, bitVAccessManagerAbi, erc20Abi } from "@/services/contracts/abis";
 import { useContractAddress } from "./useContractAddress";
 import { useWalletStatus } from "./useWalletStatus";
-import { poolAssets } from "@/services/contracts/addresses";
+import { poolAssets, treasuryReserveClaimSupported } from "@/services/contracts/addresses";
 import { PROTOCOL_ADMIN_ROLE } from "@/lib/treasury";
 import type { DataState } from "@/lib/data-state";
 import type { Address } from "viem";
@@ -35,7 +35,11 @@ export function useTreasuryReserve(): DataState<TreasuryReserveResult> {
   const { address: userAddress, state: walletState } = useWalletStatus();
 
   const enabled =
-    walletState === "connected" && Boolean(poolManagerAddress) && Boolean(accessManagerAddress) && Boolean(userAddress);
+    treasuryReserveClaimSupported &&
+    walletState === "connected" &&
+    Boolean(poolManagerAddress) &&
+    Boolean(accessManagerAddress) &&
+    Boolean(userAddress);
 
   const { data, isLoading, isError } = useReadContracts({
     contracts: [
@@ -58,6 +62,13 @@ export function useTreasuryReserve(): DataState<TreasuryReserveResult> {
     query: { enabled },
   });
 
+  if (!treasuryReserveClaimSupported) {
+    return {
+      status: "unavailable",
+      reason:
+        "The currently deployed PoolManager/Treasury predate the reserve-claim feature (Prompt 14) — a redeployment is required before this is usable on Monad Testnet. Verified in Foundry only (240/240), never on live testnet state.",
+    };
+  }
   if (!poolManagerAddress || !accessManagerAddress) {
     return { status: "unavailable", reason: "PoolManager or AccessManager is not configured for this network." };
   }
